@@ -2,7 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 
 type Service = "Christmas" | "Permanent";
 type Status = "Draft" | "Quote Sent" | "Approved" | "Installed" | "Cancelled";
-type Tab = "quote" | "measure" | "projects" | "inventory" | "purchasing" | "handoff" | "finance";
+type Tab = "quote" | "measure" | "projects" | "inventory" | "purchasing" | "handoff";
+type POStatus = "Draft" | "Ordered" | "Partially Received" | "Received" | "Cancelled";
+type POLine = { key:string; quantity:number; unitCost:number; received:number };
+type PurchaseOrder = { id:string; poNumber:string; supplier:string; status:POStatus; expectedDate:string; notes:string; createdAt:string; lines:POLine[] };
 type InventoryItem = {
   name:string; category:string; on:number; unit:string; cost:number; reorder?:number;
   note?:string; supplier?:string; purchaseTier?:number; legacy?:boolean; damaged?:number;
@@ -17,6 +20,7 @@ type Project = {
 };
 
 const STORAGE="ltp-projects-v2";
+const PO_STORAGE="ltp-purchase-orders-v1";
 const money=(n:number)=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0}).format(Number.isFinite(n)?n:0);
 const qty=(n:number)=>new Intl.NumberFormat("en-US",{maximumFractionDigits:1}).format(Number.isFinite(n)?n:0);
 const uid=()=>Math.random().toString(36).slice(2,9);
@@ -88,6 +92,9 @@ const emptyProject=():Project=>({
 function loadProjects():Project[]{
   try{return JSON.parse(localStorage.getItem(STORAGE)||"[]")}catch{return[]}
 }
+function loadPOs():PurchaseOrder[]{
+  try{return JSON.parse(localStorage.getItem(PO_STORAGE)||"[]")}catch{return[]}
+}
 function Field({label,children,hint}:{label:string;children:any;hint?:string}){
   return <label className="field"><span>{label}</span>{children}{hint&&<small>{hint}</small>}</label>
 }
@@ -105,8 +112,19 @@ export default function App(){
   const [projects,setProjects]=useState<Project[]>(()=>loadProjects());
   const [salesTaxRate,setSalesTaxRate]=useState(7);
   const [savedFlash,setSavedFlash]=useState("");
+  const [purchaseOrders,setPurchaseOrders]=useState<PurchaseOrder[]>(()=>loadPOs());
+  const [inventorySearch,setInventorySearch]=useState("");
+  const [inventoryCategory,setInventoryCategory]=useState("All");
+  const [inventoryStatus,setInventoryStatus]=useState("All");
+  const [poSupplier,setPoSupplier]=useState("CLC USA");
+  const [poExpectedDate,setPoExpectedDate]=useState("");
+  const [poNotes,setPoNotes]=useState("");
+  const [poLineKey,setPoLineKey]=useState("c9Sun");
+  const [poLineQty,setPoLineQty]=useState(500);
+  const [poLines,setPoLines]=useState<POLine[]>([]);
 
   useEffect(()=>{localStorage.setItem(STORAGE,JSON.stringify(projects))},[projects]);
+  useEffect(()=>{localStorage.setItem(PO_STORAGE,JSON.stringify(purchaseOrders))},[purchaseOrders]);
 
   const set=<K extends keyof Project>(key:K,value:Project[K])=>setProject(p=>({...p,[key]:value,updatedAt:new Date().toISOString()}));
 
@@ -177,6 +195,27 @@ export default function App(){
     return {reserved,consumed};
   },[projects]);
 
+  const stockReceived=useMemo(()=>{
+    const out:Record<string,number>={};
+    purchaseOrders.forEach(po=>{
+      if(po.status==="Cancelled")return;
+      po.lines.forEach(line=>out[line.key]=(out[line.key]||0)+(line.received||0));
+    });
+    return out;
+  },[purchaseOrders]);
+
+  const incoming=useMemo(()=>{
+    const out:Record<string,number>={};
+    purchaseOrders.forEach(po=>{
+      if(po.status==="Cancelled"||po.status==="Received"||po.status==="Draft")return;
+      po.lines.forEach(line=>{
+        const open=Math.max(0,line.quantity-(line.received||0));
+        out[line.key]=(out[line.key]||0)+open;
+      });
+    });
+    return out;
+  },[purchaseOrders]);
+
   const currentUsage=projectUsage(project);
 
   const availability=(key:string)=>{
@@ -184,7 +223,11 @@ export default function App(){
     const damaged=item.damaged||0;
     const reserved=committed.reserved[key]||0;
     const consumed=committed.consumed[key]||0;
-    return {damaged,reserved,consumed,available:item.on-damaged-reserved-consumed};
+    const received=stockReceived[key]||0;
+    const incomingQty=incoming[key]||0;
+    const onHand=item.on+received;
+    const available=onHand-damaged-reserved-consumed;
+    return {damaged,reserved,consumed,received,incoming:incomingQty,onHand,available,projected:available+incomingQty};
   };
 
   const shortages=Object.entries(currentUsage).filter(([key,use])=>{
@@ -206,6 +249,32 @@ export default function App(){
   function openProject(p:Project){setProject(p);setStep(1);setTab("quote")}
   function deleteProject(id:string){setProjects(p=>p.filter(x=>x.id!==id));if(project.id===id)newProject()}
 
+  const suppliers=["CLC USA","S4","LGL","Dekra-Lite","Commercial Christmas Supply","Other"];
+
+  function addPOLine(){
+    const item=INV[poLineKey];
+    if(!item||poLineQty<=0)return;
+    setPoLines(lines=>{
+      const existing=lines.find(x=>x.key===poLineKey);
+      if(existing)return lines.map(x=>x.key===poLineKey?{...x,quantity:x.quantity+poLineQty}:x);
+      return [...lines,{key:poLineKey,quantity:poLineQty,unitCost:item.cost||0,received:0}];
+    });
+  }
+  function createPO(){
+    if(poLines.length===0)return;
+    const nextNum="PO-"+String(purchaseOrders.length+1).padStart(4,"0");
+    const po:PurchaseOrder={id:uid(),poNumber:nextNum,supplier:poSupplier,status:"Draft",expectedDate:poExpectedDate,notes:poNotes,createdAt:new Date().toISOString(),lines:poLines};
+    setPurchaseOrders(prev=>[po,...prev]);
+    setPoLines([]);setPoExpectedDate("");setPoNotes("");
+  }
+  function setPOStatus(id:string,status:POStatus){
+    setPurchaseOrders(prev=>prev.map(po=>po.id===id?{...po,status}:po));
+  }
+  function receiveAll(id:string){
+    setPurchaseOrders(prev=>prev.map(po=>po.id===id?{...po,status:"Received",lines:po.lines.map(line=>({...line,received:line.quantity}))}:po));
+  }
+  function deletePO(id:string){setPurchaseOrders(prev=>prev.filter(po=>po.id!==id))}
+
   const handoff=buildHandoff(project,estimate);
 
   return <div className="shell">
@@ -220,7 +289,7 @@ export default function App(){
         <Nav active={tab==="measure"} tone="purple" onClick={()=>setTab("measure")}>Photo Measure</Nav>
         <Nav active={tab==="projects"} tone="cyan" onClick={()=>setTab("projects")}>Projects</Nav>
         <Nav active={tab==="inventory"} tone="green" onClick={()=>setTab("inventory")}>Inventory</Nav>
-        <Nav active={tab==="purchasing"} tone="orange" onClick={()=>setTab("purchasing")}>Purchasing</Nav>
+        <Nav active={tab==="purchasing"} tone="orange" onClick={()=>setTab("purchasing")}>Procurement</Nav>
         <Nav active={tab==="handoff"} tone="pink" onClick={()=>setTab("handoff")}>Jobber Notes</Nav>
       </nav>
       <button className="new-project" onClick={newProject}>+ New project</button>
@@ -348,23 +417,114 @@ export default function App(){
       </section>}
 
       {tab==="inventory"&&<section className="page">
-        <div className="page-head green-head"><div><span className="eyebrow">Inventory control</span><h1>Know what can actually be sold.</h1><p>Approved projects reserve inventory. Installed projects consume inventory. Draft and Quote Sent remain projected only.</p></div></div>
-        <div className="inventory-summary"><Metric label="Approved projects" value={String(projects.filter(p=>p.status==="Approved").length)} tone="orange"/><Metric label="Installed projects" value={String(projects.filter(p=>p.status==="Installed").length)} tone="green"/><Metric label="Current project shortages" value={String(shortages.length)} tone={shortages.length?"red":"green"}/></div>
-        <div className="table-wrap"><table><thead><tr><th>Item</th><th>Category</th><th>On hand</th><th>Damaged</th><th>Reserved</th><th>Consumed</th><th>Available</th><th>Supplier / note</th></tr></thead><tbody>
-          {Object.entries(INV).map(([k,item])=>{const a=availability(k);return <tr key={k} className={item.legacy?"legacy-row":""}><td><b>{item.name}</b></td><td>{item.category}</td><td>{qty(item.on)} {item.unit}</td><td>{qty(a.damaged)}</td><td>{qty(a.reserved)}</td><td>{qty(a.consumed)}</td><td className={item.reorder&&a.available<item.reorder?"warn":""}>{qty(a.available)}</td><td><b>{item.supplier||"—"}</b>{item.note&&<small>{item.note}</small>}</td></tr>})}
-        </tbody></table></div>
+        <div className="page-head green-head"><div><span className="eyebrow">Inventory control center</span><h1>See risk, capacity and incoming stock—not noise.</h1><p>Inventory is organized for decisions: what is usable now, what is committed, what is inbound, and what needs attention.</p></div></div>
+
+        <div className="inventory-summary four-summary">
+          <Metric label="SKUs tracked" value={String(Object.keys(INV).length)} tone="green"/>
+          <Metric label="Needs reorder" value={String(Object.entries(INV).filter(([k,i])=>i.reorder&&availability(k).projected<i.reorder).length)} tone="orange"/>
+          <Metric label="Open purchase orders" value={String(purchaseOrders.filter(po=>["Draft","Ordered","Partially Received"].includes(po.status)).length)} tone="blue"/>
+          <Metric label="Approved jobs reserving stock" value={String(projects.filter(p=>p.status==="Approved").length)} tone="purple"/>
+        </div>
+
+        <div className="inventory-toolbar">
+          <input className="input" placeholder="Search SKU, color, supplier…" value={inventorySearch} onChange={e=>setInventorySearch(e.target.value)}/>
+          <select className="input" value={inventoryCategory} onChange={e=>setInventoryCategory(e.target.value)}>
+            <option>All</option>{Array.from(new Set(Object.values(INV).map(i=>i.category))).sort().map(x=><option key={x}>{x}</option>)}
+          </select>
+          <select className="input" value={inventoryStatus} onChange={e=>setInventoryStatus(e.target.value)}>
+            <option>All</option><option>Needs reorder</option><option>Incoming</option><option>Legacy</option><option>Healthy</option>
+          </select>
+        </div>
+
+        <div className="inventory-groups">
+          {Array.from(new Set(Object.values(INV).map(i=>i.category))).sort().map(category=>{
+            const rows=Object.entries(INV).filter(([k,item])=>{
+              const a=availability(k);
+              const text=(item.name+" "+(item.supplier||"")+" "+(item.note||"")).toLowerCase();
+              const matchesSearch=!inventorySearch||text.includes(inventorySearch.toLowerCase());
+              const matchesCategory=inventoryCategory==="All"||item.category===inventoryCategory;
+              const needs=!!item.reorder&&a.projected<item.reorder;
+              const matchesStatus=inventoryStatus==="All"||
+                (inventoryStatus==="Needs reorder"&&needs)||
+                (inventoryStatus==="Incoming"&&a.incoming>0)||
+                (inventoryStatus==="Legacy"&&!!item.legacy)||
+                (inventoryStatus==="Healthy"&&!needs&&!item.legacy);
+              return item.category===category&&matchesSearch&&matchesCategory&&matchesStatus;
+            });
+            if(rows.length===0)return null;
+            return <details className="inventory-category" key={category} open={inventoryCategory!=="All"||inventorySearch!==""}>
+              <summary><span>{category}</span><b>{rows.length} SKUs</b></summary>
+              <div className="inventory-card-grid">
+                {rows.map(([k,item])=>{const a=availability(k);const needs=!!item.reorder&&a.projected<item.reorder;return <article className={"inventory-card "+(needs?"needs ":"")+(item.legacy?"legacy ":"")} key={k}>
+                  <div className="inventory-card-head"><div><small>{item.supplier||"—"}</small><h3>{item.name}</h3></div>{needs&&<span className="attention">Reorder</span>}{item.legacy&&<span className="legacy-pill">Legacy</span>}</div>
+                  <div className="stock-grid">
+                    <div><span>On hand</span><b>{qty(a.onHand)}</b></div>
+                    <div><span>Reserved</span><b>{qty(a.reserved)}</b></div>
+                    <div><span>Available</span><b>{qty(a.available)}</b></div>
+                    <div><span>Incoming</span><b>{qty(a.incoming)}</b></div>
+                    <div className="projected"><span>Projected</span><b>{qty(a.projected)}</b></div>
+                  </div>
+                  <div className="inventory-meta"><span>{item.unit}</span>{item.reorder&&<span>Reorder point: {qty(item.reorder)}</span>}{item.note&&<p>{item.note}</p>}</div>
+                </article>})}
+              </div>
+            </details>
+          })}
+        </div>
       </section>}
 
       {tab==="purchasing"&&<section className="page">
-        <div className="page-head orange-head"><div><span className="eyebrow">Purchase planning</span><h1>Buy what unlocks booked revenue.</h1><p>Recommendations are based on available inventory after approved and installed projects.</p></div></div>
-        <div className="purchase-grid">{Object.entries(INV).map(([k,item])=>{
-          const a=availability(k);if(!item.reorder||a.available>=item.reorder)return null;
-          let buy=Math.max(item.reorder*2-a.available,0);
-          if(item.purchaseTier)buy=Math.ceil(buy/item.purchaseTier)*item.purchaseTier;
-          if(k.startsWith("c9")&&item.unit==="bulbs")buy=Math.ceil(buy/500)*500;
-          if(k.startsWith("clip"))buy=Math.ceil(buy/500)*500;
-          return <article className="purchase-card" key={k}><span>{item.supplier}</span><h3>{item.name}</h3><strong>Buy {qty(buy)} {item.unit}</strong><p>Estimated product cost: {item.cost?money(buy*item.cost):"Cost not configured"}</p>{item.purchaseTier&&<small>Rounded to supplier tier of {item.purchaseTier}+.</small>}</article>
-        })}</div>
+        <div className="page-head orange-head"><div><span className="eyebrow">Procurement & purchase orders</span><h1>Turn inventory needs into controlled purchasing.</h1><p>Create POs, track what was ordered, receive stock, and let incoming inventory affect purchasing decisions.</p></div></div>
+
+        <div className="procurement-layout">
+          <section className="po-builder">
+            <div className="section-title"><span>PO</span><div><h2>Create purchase order</h2><p>Build an order by supplier, add SKUs, then move it from Draft → Ordered → Received.</p></div></div>
+            <div className="form-grid three">
+              <Field label="Supplier"><select className="input" value={poSupplier} onChange={e=>setPoSupplier(e.target.value)}>{suppliers.map(s=><option key={s}>{s}</option>)}</select></Field>
+              <Field label="Expected date"><input className="input" type="date" value={poExpectedDate} onChange={e=>setPoExpectedDate(e.target.value)}/></Field>
+              <Field label="Notes"><input className="input" value={poNotes} onChange={e=>setPoNotes(e.target.value)} placeholder="Season stock-up, emergency fill, etc."/></Field>
+            </div>
+            <div className="po-line-builder">
+              <select className="input" value={poLineKey} onChange={e=>setPoLineKey(e.target.value)}>{Object.entries(INV).filter(([,i])=>!i.legacy).map(([k,i])=><option value={k} key={k}>{i.name}</option>)}</select>
+              <input className="input" type="number" min="1" value={poLineQty} onChange={e=>setPoLineQty(+e.target.value)}/>
+              <button onClick={addPOLine}>+ Add line</button>
+            </div>
+            {poLines.length>0&&<div className="po-draft-lines">
+              {poLines.map((line,idx)=><div key={line.key}><span>{INV[line.key]?.name}</span><b>{qty(line.quantity)} {INV[line.key]?.unit}</b><span>{money(line.quantity*line.unitCost)}</span><button onClick={()=>setPoLines(lines=>lines.filter((_,i)=>i!==idx))}>Remove</button></div>)}
+              <div className="po-total"><span>Draft total</span><b>{money(poLines.reduce((s,l)=>s+l.quantity*l.unitCost,0))}</b></div>
+            </div>}
+            <button className="primary po-create" disabled={poLines.length===0} onClick={createPO}>Create Draft PO</button>
+          </section>
+
+          <section className="reorder-panel">
+            <div className="section-title"><span>!</span><div><h2>Recommended buys</h2><p>Uses projected stock after open POs—not just current on-hand.</p></div></div>
+            <div className="purchase-grid compact">{Object.entries(INV).map(([k,item])=>{
+              const a=availability(k);if(!item.reorder||a.projected>=item.reorder||item.legacy)return null;
+              let buy=Math.max(item.reorder*2-a.projected,0);
+              if(item.purchaseTier)buy=Math.ceil(buy/item.purchaseTier)*item.purchaseTier;
+              if(k.startsWith("c9")&&item.unit==="bulbs")buy=Math.ceil(buy/500)*500;
+              if(k.startsWith("clip"))buy=Math.ceil(buy/500)*500;
+              return <article className="purchase-card" key={k}><span>{item.supplier}</span><h3>{item.name}</h3><strong>Buy {qty(buy)} {item.unit}</strong><p>Projected after incoming: {qty(a.projected)}</p><p>Estimated product cost: {item.cost?money(buy*item.cost):"Cost not configured"}</p><button onClick={()=>{setPoSupplier(item.supplier||"Other");setPoLineKey(k);setPoLineQty(buy)}}>Load into PO builder</button></article>
+            })}</div>
+          </section>
+        </div>
+
+        <section className="po-list-section">
+          <div className="section-title"><span>#</span><div><h2>Purchase orders</h2><p>Receiving a PO adds its received quantity into live on-hand inventory.</p></div></div>
+          {purchaseOrders.length===0?<div className="empty-state">No purchase orders yet.</div>:<div className="po-list">{purchaseOrders.map(po=>{
+            const total=po.lines.reduce((s,l)=>s+l.quantity*l.unitCost,0);
+            return <article className="po-card" key={po.id}>
+              <div className="po-card-top"><div><small>{po.supplier}</small><h3>{po.poNumber}</h3></div><span className={"po-status "+po.status.toLowerCase().replaceAll(" ","-")}>{po.status}</span><b>{money(total)}</b></div>
+              <div className="po-meta"><span>Created {new Date(po.createdAt).toLocaleDateString()}</span><span>{po.expectedDate?"Expected "+po.expectedDate:"No expected date"}</span><span>{po.lines.length} line items</span></div>
+              <div className="po-lines">{po.lines.map(l=><div key={l.key}><span>{INV[l.key]?.name}</span><b>{qty(l.received)} / {qty(l.quantity)} received</b></div>)}</div>
+              {po.notes&&<p className="po-notes">{po.notes}</p>}
+              <div className="po-actions">
+                {po.status==="Draft"&&<button onClick={()=>setPOStatus(po.id,"Ordered")}>Mark Ordered</button>}
+                {["Ordered","Partially Received"].includes(po.status)&&<button className="primary" onClick={()=>receiveAll(po.id)}>Receive All</button>}
+                {!["Received","Cancelled"].includes(po.status)&&<button onClick={()=>setPOStatus(po.id,"Cancelled")}>Cancel</button>}
+                <button className="danger-link" onClick={()=>deletePO(po.id)}>Delete</button>
+              </div>
+            </article>})}</div>}
+        </section>
       </section>}
 
       {tab==="handoff"&&<section className="page">
