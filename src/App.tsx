@@ -19,7 +19,7 @@ type Project = {
   bushFt:number; bushStrandsOverride:number; palmStrands:number; treeStrands:number; columnStrands:number;
   wreathSize:number; wreathQty:number; garlandFt:number; snowflakes:number; treeDrops:number;
   roofRate:number; permanentFt:number; permanentCoverage:string; permanentRate:number;
-  landscapeItems?:LandscapeItem[]; decorItems?:DecorItem[];
+  landscapeItems?:LandscapeItem[]; decorItems?:DecorItem[]; quoteComplete?:boolean; draftStep?:number;
 };
 
 const STORAGE="ltp-projects-v2";
@@ -89,7 +89,7 @@ const emptyProject=():Project=>({
   stories:1,roofSurface:"Shingle",complexity:"Straight / simple",access:"Standard ladder access",
   bushFt:0,bushStrandsOverride:0,palmStrands:0,treeStrands:0,columnStrands:0,
   wreathSize:48,wreathQty:0,garlandFt:0,snowflakes:0,treeDrops:0,
-  roofRate:8,permanentFt:0,permanentCoverage:"Front Only",permanentRate:35,landscapeItems:[],decorItems:[]
+  roofRate:8,permanentFt:0,permanentCoverage:"Front Only",permanentRate:35,landscapeItems:[],decorItems:[],quoteComplete:false,draftStep:0
 });
 
 function loadProjects():Project[]{
@@ -135,6 +135,8 @@ export default function App(){
   const [receiptLines,setReceiptLines]=useState<POLine[]>([]);
   const [receiptSupplier,setReceiptSupplier]=useState("Receipt Import");
   const [receiptMessage,setReceiptMessage]=useState("");
+  const [projectServiceView,setProjectServiceView]=useState<Service>("Christmas");
+  const [draftsOnly,setDraftsOnly]=useState(false);
 
   useEffect(()=>{localStorage.setItem(STORAGE,JSON.stringify(projects))},[projects]);
   useEffect(()=>{localStorage.setItem(PO_STORAGE,JSON.stringify(purchaseOrders))},[purchaseOrders]);
@@ -261,14 +263,15 @@ export default function App(){
     return use>a.available;
   });
 
-  function saveProject(){
-    const next={...project,updatedAt:new Date().toISOString()};
+  function saveProject(complete=false){
+    const next={...project,quoteComplete:complete,draftStep:complete?4:step,updatedAt:new Date().toISOString()};
+    setProject(next);
     setProjects(prev=>{
       const i=prev.findIndex(x=>x.id===next.id);
       if(i<0)return [next,...prev];
       const copy=[...prev];copy[i]=next;return copy;
     });
-    setSavedFlash("Saved");
+    setSavedFlash(complete?"Project Saved":"Draft Saved");
     window.setTimeout(()=>setSavedFlash(""),1600);
   }
   function newProject(){setProject(emptyProject());setStep(1);setTab("new")}
@@ -354,8 +357,6 @@ export default function App(){
 
   function projectAction(p:Project,action:string){
     if(!action)return;
-    if(action==="quote"){setProject(p);setStep(1);setTab("quote");return}
-    if(action==="measure"){setProject(p);setTab("measure");return}
     if(action==="approved"){
       const next={...p,status:"Quote Approved" as Status,updatedAt:new Date().toISOString()};
       setProjects(prev=>prev.map(x=>x.id===p.id?next:x));if(project.id===p.id)setProject(next);return;
@@ -371,11 +372,23 @@ export default function App(){
     if(action==="delete"){deleteProject(p.id)}
   }
 
-  const approvedProjects=projects.filter(p=>p.status==="Quote Approved");
-  const lostProjects=projects.filter(p=>p.status==="Quote Not Approved");
-  const openProjects=projects.filter(p=>p.status==="New Estimate");
+  const serviceProjects=projects.filter(p=>p.service===projectServiceView);
+  const approvedProjects=serviceProjects.filter(p=>p.status==="Quote Approved");
+  const lostProjects=serviceProjects.filter(p=>p.status==="Quote Not Approved");
+  const openProjects=serviceProjects.filter(p=>p.status==="New Estimate");
+  const unfinishedProjects=serviceProjects.filter(p=>!p.quoteComplete);
   const decidedProjects=approvedProjects.length+lostProjects.length;
   const closingRate=decidedProjects?approvedProjects.length/decidedProjects*100:0;
+  const christmasProjects=projects.filter(p=>p.service==="Christmas");
+  const permanentProjects=projects.filter(p=>p.service==="Permanent");
+  const serviceClose=(rows:Project[])=>{
+    const won=rows.filter(p=>p.status==="Quote Approved").length;
+    const lost=rows.filter(p=>p.status==="Quote Not Approved").length;
+    return won+lost?won/(won+lost)*100:0;
+  };
+  const visibleOpen=draftsOnly?openProjects.filter(p=>!p.quoteComplete):openProjects;
+  const visibleApproved=draftsOnly?approvedProjects.filter(p=>!p.quoteComplete):approvedProjects;
+  const visibleLost=draftsOnly?lostProjects.filter(p=>!p.quoteComplete):lostProjects;
 
   const handoff=buildHandoff(project,estimate);
 
@@ -410,8 +423,8 @@ export default function App(){
             <Field label="Status"><select className="input" value={project.status} onChange={e=>set("status",e.target.value as Status)}>{["New Estimate","Quote Approved","Quote Not Approved"].map(x=><option key={x}>{x}</option>)}</select></Field>
           </div>
           <div className="new-project-actions">
-            <button className="primary" onClick={()=>{saveProject();setTab("measure")}}>Create & Measure</button>
-            <button onClick={()=>{saveProject();setTab("quote")}}>Create & Skip to Quote</button>
+            <button className="primary" onClick={()=>{saveProject(false);setTab("measure")}}>Start with Measurements</button>
+            <button onClick={()=>{saveProject(false);setTab("quote")}}>Start Quote</button>
           </div>
         </div>
       </section>}
@@ -419,7 +432,7 @@ export default function App(){
       {tab==="quote"&&<section className="page">
         <div className="page-head blue-head">
           <div><span className="eyebrow">Quote Builder · {project.customer||"Current project"}</span><h1>Build only what this customer needs.</h1><p>Property sets the difficulty. Lighting scope comes next. Landscape and décor stay optional until you add them.</p></div>
-          <div className="head-actions"><span className={"status-pill "+project.status.toLowerCase().replaceAll(" ","-")}>{project.status}</span><button className="primary" onClick={saveProject}>{savedFlash||"Save project"}</button></div>
+          <div className="head-actions"><span className={"status-pill "+project.status.toLowerCase().replaceAll(" ","-")}>{project.status}</span><button className="primary" onClick={()=>saveProject(step===4)}>{savedFlash||(step===4?"Save Project":"Save Draft")}</button></div>
         </div>
 
         <div className="stepper four-steps">
@@ -513,7 +526,7 @@ export default function App(){
               <Metric label="Inventory shortages" value={String(shortages.length)} tone={shortages.length?"red":"green"}/>
             </div>
             {shortages.length>0&&<div className="warning-box red-box"><b>Inventory shortage:</b> {shortages.map(([k,u])=>INV[k]?.name+" ("+qty(u-availability(k).available)+" short)").join(", ")}</div>}
-            <div className="review-actions"><button className="primary" onClick={saveProject}>{savedFlash||"Save project"}</button></div>
+            <div className="review-actions"><button className="primary" onClick={()=>saveProject(true)}>{savedFlash||"Save Project"}</button></div>
             <div className="inline-jobber">
               <div className="inline-jobber-head"><div><span className="eyebrow">Jobber note</span><h3>Ready to paste</h3></div><button onClick={()=>navigator.clipboard.writeText(handoff)}>Copy note</button></div>
               <textarea className="handoff compact" readOnly value={handoff} rows={12}/>
@@ -535,22 +548,32 @@ export default function App(){
 
       {tab==="projects"&&<section className="page">
         <div className="page-head cyan-head">
-          <div><span className="eyebrow">Sales pipeline</span><h1>Projects</h1><p>Track estimates from first quote through approval or loss, and watch the close rate as volume grows.</p></div>
-          <button className="primary" onClick={newProject}>+ New Project</button>
+          <div><span className="eyebrow">Sales pipeline</span><h1>Projects</h1><p>Christmas and Permanent are tracked separately so each service has its own estimate volume, wins, losses and closing rate.</p></div>
+          <button className={draftsOnly?"primary":""} onClick={()=>setDraftsOnly(v=>!v)}>{draftsOnly?"Show All Projects":"View Drafts / Unfinished"}</button>
+        </div>
+
+        <div className="service-scorecards">
+          <button className={"service-score "+(projectServiceView==="Christmas"?"active":"")} onClick={()=>setProjectServiceView("Christmas")}>
+            <span>Christmas</span><strong>{christmasProjects.length} estimates</strong><small>{serviceClose(christmasProjects).toFixed(1)}% close rate</small>
+          </button>
+          <button className={"service-score "+(projectServiceView==="Permanent"?"active":"")} onClick={()=>setProjectServiceView("Permanent")}>
+            <span>Permanent</span><strong>{permanentProjects.length} estimates</strong><small>{serviceClose(permanentProjects).toFixed(1)}% close rate</small>
+          </button>
         </div>
 
         <div className="project-metrics">
-          <Metric label="Total estimates" value={String(projects.length)} tone="cyan"/>
+          <Metric label={projectServiceView+" estimates"} value={String(serviceProjects.length)} tone="cyan"/>
           <Metric label="New estimates" value={String(openProjects.length)} tone="blue"/>
           <Metric label="Quote approved" value={String(approvedProjects.length)} tone="green"/>
           <Metric label="Quote not approved" value={String(lostProjects.length)} tone="red"/>
           <Metric label="Closing rate" value={closingRate.toFixed(1)+"%"} tone="purple"/>
+          <Metric label="Draft / unfinished" value={String(unfinishedProjects.length)} tone="orange"/>
         </div>
 
-        {projects.length===0?<div className="empty-state">No projects yet. Start with New Project.</div>:<>
-          <ProjectGroup title="New Estimates" tone="blue" projects={openProjects} onAction={projectAction}/>
-          <ProjectGroup title="Quote Approved" tone="green" projects={approvedProjects} onAction={projectAction}/>
-          <ProjectGroup title="Quote Not Approved" tone="red" projects={lostProjects} onAction={projectAction}/>
+        {serviceProjects.length===0?<div className="empty-state">No {projectServiceView} projects yet.</div>:<>
+          <ProjectGroup title="New Estimates" tone="blue" projects={visibleOpen} onAction={projectAction}/>
+          <ProjectGroup title="Quote Approved" tone="green" projects={visibleApproved} onAction={projectAction}/>
+          <ProjectGroup title="Quote Not Approved" tone="red" projects={visibleLost} onAction={projectAction}/>
         </>}
       </section>}
 
@@ -769,11 +792,10 @@ function ProjectGroup({title,tone,projects,onAction}:{title:string;tone:string;p
       {projects.map(p=><article className="project-row pipeline-row" key={p.id}>
         <div className="project-main"><b>{p.customer||"Unnamed customer"}</b><span>{[p.address,p.city].filter(Boolean).join(", ")||"No address"}</span></div>
         <span>{p.service}</span>
+        <span className={p.quoteComplete?"completion-pill complete":"completion-pill draft"}>{p.quoteComplete?"Quote Complete":"Draft · Step "+(p.draftStep||0)}</span>
         <span className={"status-pill "+p.status.toLowerCase().replaceAll(" ","-")}>{p.status}</span>
         <select className="project-action-select" defaultValue="" onChange={e=>{const a=e.target.value;projectActionReset(e.currentTarget);onAction(p,a)}}>
-          <option value="" disabled>Choose action…</option>
-          <option value="quote">Quote Builder</option>
-          <option value="measure">Measurements</option>
+          <option value="" disabled>Update status…</option>
           {p.status!=="New Estimate"&&<option value="new-estimate">Move to New Estimate</option>}
           {p.status!=="Quote Approved"&&<option value="approved">Mark Quote Approved</option>}
           {p.status!=="Quote Not Approved"&&<option value="not-approved">Mark Quote Not Approved</option>}
