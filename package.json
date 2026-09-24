@@ -14,7 +14,8 @@
     "typescript": "^5.9.3",
     "react": "^19.2.1",
     "react-dom": "^19.2.1",
-    "lucide-react": "^0.453.0"
+    "lucide-react": "^0.453.0",
+    "tesseract.js": "^6.0.1"
   },
   "devDependencies": {}
 }
