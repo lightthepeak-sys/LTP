@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 
 type Service = "Christmas" | "Permanent";
 type Status = "Draft" | "Quote Sent" | "Approved" | "Installed" | "Cancelled";
-type Tab = "quote" | "measure" | "projects" | "inventory" | "purchasing" | "handoff";
+type Tab = "new" | "quote" | "measure" | "projects" | "inventory" | "purchasing";
 type POStatus = "Draft" | "Ordered" | "Partially Received" | "Received" | "Cancelled";
 type POLine = { key:string; quantity:number; unitCost:number; received:number };
 type PurchaseOrder = { id:string; poNumber:string; supplier:string; status:POStatus; expectedDate:string; notes:string; createdAt:string; lines:POLine[] };
@@ -106,7 +106,7 @@ function StepDot({n,label,active,done,onClick}:{n:number;label:string;active:boo
 }
 
 export default function App(){
-  const [tab,setTab]=useState<Tab>("quote");
+  const [tab,setTab]=useState<Tab>("new");
   const [step,setStep]=useState(1);
   const [project,setProject]=useState<Project>(emptyProject());
   const [projects,setProjects]=useState<Project[]>(()=>loadProjects());
@@ -245,7 +245,7 @@ export default function App(){
     setSavedFlash("Saved");
     window.setTimeout(()=>setSavedFlash(""),1600);
   }
-  function newProject(){setProject(emptyProject());setStep(1);setTab("quote")}
+  function newProject(){setProject(emptyProject());setStep(1);setTab("new")}
   function openProject(p:Project){setProject(p);setStep(1);setTab("quote")}
   function deleteProject(id:string){setProjects(p=>p.filter(x=>x.id!==id));if(project.id===id)newProject()}
 
@@ -285,43 +285,48 @@ export default function App(){
       </div>
       <div className="single-mode">Single-app mode · real user login is the next security layer.</div>
       <nav>
-        <Nav active={tab==="quote"} tone="blue" onClick={()=>setTab("quote")}>Quote Builder</Nav>
-        <Nav active={tab==="measure"} tone="purple" onClick={()=>setTab("measure")}>Photo Measure</Nav>
+        <Nav active={tab==="new"} tone="blue" onClick={newProject}>New Project</Nav>
         <Nav active={tab==="projects"} tone="cyan" onClick={()=>setTab("projects")}>Projects</Nav>
+        <Nav active={tab==="measure"} tone="purple" onClick={()=>setTab("measure")}>Measurements</Nav>
+        <Nav active={tab==="quote"} tone="blue" onClick={()=>setTab("quote")}>Quote Builder</Nav>
         <Nav active={tab==="inventory"} tone="green" onClick={()=>setTab("inventory")}>Inventory</Nav>
         <Nav active={tab==="purchasing"} tone="orange" onClick={()=>setTab("purchasing")}>Procurement</Nav>
-        <Nav active={tab==="handoff"} tone="pink" onClick={()=>setTab("handoff")}>Jobber Notes</Nav>
       </nav>
-      <button className="new-project" onClick={newProject}>+ New project</button>
     </aside>
 
     <main className="main">
+      {tab==="new"&&<section className="page">
+        <div className="page-head blue-head"><div><span className="eyebrow">Start here</span><h1>New Project</h1><p>Create the customer and property record once. Every other module works from this same project.</p></div></div>
+        <div className="wizard-card step-1 new-project-card">
+          <div className="section-title"><span>1</span><div><h2>Customer & project</h2><p>No duplicate customer entry in Measurements or Quote Builder.</p></div></div>
+          <div className="form-grid two">
+            <Field label="Customer name"><input className="input" value={project.customer} onChange={e=>set("customer",e.target.value)}/></Field>
+            <Field label="Property address"><input className="input" value={project.address} onChange={e=>set("address",e.target.value)}/></Field>
+            <Field label="Service"><select className="input" value={project.service} onChange={e=>set("service",e.target.value as Service)}><option>Christmas</option><option>Permanent</option></select></Field>
+            <Field label="Initial status"><select className="input" value={project.status} onChange={e=>set("status",e.target.value as Status)}>{["Draft","Quote Sent","Approved","Installed","Cancelled"].map(x=><option key={x}>{x}</option>)}</select></Field>
+          </div>
+          <div className="new-project-actions">
+            <button className="primary" onClick={()=>{saveProject();setTab("measure")}}>Create & Measure</button>
+            <button onClick={()=>{saveProject();setTab("quote")}}>Create & Skip to Quote</button>
+          </div>
+        </div>
+      </section>}
+
       {tab==="quote"&&<section className="page">
         <div className="page-head blue-head">
-          <div><span className="eyebrow">One project · one source of truth</span><h1>Build the quote without duplicating information.</h1><p>Customer data lives once. Property, landscape and lighting measurements all feed the same project, price, material list and Jobber notes.</p></div>
+          <div><span className="eyebrow">Quote Builder · {project.customer||"Current project"}</span><h1>Build scope, price and materials.</h1><p>Customer information already lives in the project. This workflow only handles property, landscape/décor and lighting scope.</p></div>
           <div className="head-actions"><span className={"status-pill "+project.status.toLowerCase().replaceAll(" ","-")}>{project.status}</span><button className="primary" onClick={saveProject}>{savedFlash||"Save project"}</button></div>
         </div>
 
-        <div className="stepper four-steps">
-          <StepDot n={1} label="Project" active={step===1} done={step>1} onClick={()=>setStep(1)}/>
-          <StepDot n={2} label="Property" active={step===2} done={step>2} onClick={()=>setStep(2)}/>
-          <StepDot n={3} label="Landscape & décor" active={step===3} done={step>3} onClick={()=>setStep(3)}/>
-          <StepDot n={4} label="Lighting scope" active={step===4} done={false} onClick={()=>setStep(4)}/>
+        <div className="stepper three-steps">
+          <StepDot n={1} label="Property" active={step===1} done={step>1} onClick={()=>setStep(1)}/>
+          <StepDot n={2} label="Landscape & décor" active={step===1} done={step>2} onClick={()=>setStep(2)}/>
+          <StepDot n={3} label="Lighting scope" active={step===2} done={false} onClick={()=>setStep(3)}/>
         </div>
 
         <div className={"wizard-card step-"+step}>
           {step===1&&<>
-            <div className="section-title"><span>1</span><div><h2>Project reference</h2><p>Only the information needed to tie this internal estimate back to GHL and Jobber.</p></div></div>
-            <div className="form-grid two">
-              <Field label="Customer name"><input className="input" value={project.customer} onChange={e=>set("customer",e.target.value)}/></Field>
-              <Field label="Property address"><input className="input" value={project.address} onChange={e=>set("address",e.target.value)}/></Field>
-              <Field label="Service"><select className="input" value={project.service} onChange={e=>set("service",e.target.value as Service)}><option>Christmas</option><option>Permanent</option></select></Field>
-              <Field label="Project status" hint="Approved reserves material. Installed consumes the planned quantity until actual usage is reconciled."><select className="input" value={project.status} onChange={e=>set("status",e.target.value as Status)}>{["Draft","Quote Sent","Approved","Installed","Cancelled"].map(x=><option key={x}>{x}</option>)}</select></Field>
-            </div>
-          </>}
-
-          {step===2&&<>
-            <div className="section-title"><span>2</span><div><h2>Property</h2><p>Describe the property before choosing the lighting scope. These answers drive difficulty, hardware and pricing.</p></div></div>
+            <div className="section-title"><span>1</span><div><h2>Property</h2><p>Describe the property before choosing the lighting scope. These answers drive difficulty, hardware and pricing.</p></div></div>
             <div className="form-grid two">
               <Field label="Stories"><select className="input" value={project.stories} onChange={e=>set("stories",+e.target.value)}><option value={1}>1 story</option><option value={2}>2 stories</option><option value={3}>3 stories</option></select></Field>
               <Field label="Roof surface"><select className="input" value={project.roofSurface} onChange={e=>set("roofSurface",e.target.value)}><option>Shingle</option><option>Tile</option><option>Metal</option><option>Mixed / Other</option></select></Field>
@@ -331,8 +336,8 @@ export default function App(){
             {project.service==="Christmas"&&<div className="rate-display"><span>Auto roofline rate</span><strong>{money(estimate.roofRate)}/ft</strong><small>Target range is constrained to $8–$12/ft.</small></div>}
           </>}
 
-          {step===3&&<>
-            <div className="section-title"><span>3</span><div><h2>Landscape & décor</h2><p>Add only what is actually in the design. Use the measurement tool for trees, columns and irregular bushes when needed.</p></div></div>
+          {step===2&&<>
+            <div className="section-title"><span>2</span><div><h2>Landscape & décor</h2><p>Add only what is actually in the design. Use the measurement tool for trees, columns and irregular bushes when needed.</p></div></div>
             <div className="subgroup green-group">
               <h3>Mini-light areas</h3>
               <div className="form-grid four">
@@ -356,8 +361,8 @@ export default function App(){
             </div>
           </>}
 
-          {step===4&&project.service==="Christmas"&&<>
-            <div className="section-title"><span>4</span><div><h2>Lighting scope</h2><p>Enter the final lighting measurements for this project. Use Google Earth first and Photo Measure only where it adds accuracy.</p></div></div>
+          {step===3&&project.service==="Christmas"&&<>
+            <div className="section-title"><span>3</span><div><h2>Lighting scope</h2><p>Enter the final lighting measurements for this project. Use Google Earth first and Photo Measure only where it adds accuracy.</p></div></div>
             <div className="form-grid three">
               <Field label="Main roofline · ft"><input className="input" type="number" min="0" value={project.roofFt} onChange={e=>set("roofFt",+e.target.value)}/></Field>
               <Field label="Ridgeline · ft"><input className="input" type="number" min="0" value={project.ridgeFt} onChange={e=>set("ridgeFt",+e.target.value)}/></Field>
@@ -374,11 +379,11 @@ export default function App(){
               <Metric label="Gross margin" value={estimate.gm.toFixed(1)+"%"} tone="green"/>
             </div>
             {shortages.length>0&&<div className="warning-box red-box"><b>Inventory shortage:</b> {shortages.map(([k,u])=>INV[k]?.name+" ("+qty(u-availability(k).available)+" short)").join(", ")}</div>}
-            <div className="review-actions"><button className="primary" onClick={saveProject}>{savedFlash||"Save project"}</button><button onClick={()=>setTab("handoff")}>Open Jobber notes</button></div>
+            <div className="review-actions"><button className="primary" onClick={saveProject}>{savedFlash||"Save project"}</button></div>
           </>}
 
-          {step===4&&project.service==="Permanent"&&<>
-            <div className="section-title"><span>4</span><div><h2>Permanent lighting scope</h2><p>Permanent inventory uses exact footage. No automatic cut or waste allowance.</p></div></div>
+          {step===3&&project.service==="Permanent"&&<>
+            <div className="section-title"><span>3</span><div><h2>Permanent lighting scope</h2><p>Permanent inventory uses exact footage. No automatic cut or waste allowance.</p></div></div>
             <div className="form-grid three">
               <Field label="Measured footage"><input className="input" type="number" min="0" value={project.permanentFt} onChange={e=>set("permanentFt",+e.target.value)}/></Field>
               <Field label="Coverage"><select className="input" value={project.permanentCoverage} onChange={e=>set("permanentCoverage",e.target.value)}><option>Front Only</option><option>Front & Sides</option><option>All Around</option></select></Field>
@@ -392,21 +397,20 @@ export default function App(){
               <Metric label="Gross margin" value={estimate.gm.toFixed(1)+"%"} tone="green"/>
             </div>
             {shortages.length>0&&<div className="warning-box red-box"><b>Inventory shortage:</b> {shortages.map(([k,u])=>INV[k]?.name+" ("+qty(u-availability(k).available)+" short)").join(", ")}</div>}
-            <div className="review-actions"><button className="primary" onClick={saveProject}>{savedFlash||"Save project"}</button><button onClick={()=>setTab("handoff")}>Open Jobber notes</button></div>
+            <div className="review-actions"><button className="primary" onClick={saveProject}>{savedFlash||"Save project"}</button></div>
           </>}
 
           <div className="wizard-actions">
             <button disabled={step===1} onClick={()=>setStep(s=>Math.max(1,s-1))}>← Back</button>
-            <span>Step {step} of 4</span>
-            <button className="primary" disabled={step===4} onClick={()=>setStep(s=>Math.min(4,s+1))}>Next →</button>
+            <span>Step {step} of 3</span>
+            <button className="primary" disabled={step===3} onClick={()=>setStep(s=>Math.min(3,s+1))}>Next →</button>
           </div>
         </div>
       </section>}
 
       {tab==="measure"&&<section className="page measure-page">
-        <div className="page-head purple-head"><div><span className="eyebrow">Measurement tool for the current project</span><h1>Photo Measure</h1><p><b>{project.customer||"Current project"}</b>{project.address?" · "+project.address:""}. Customer information belongs to the project record once; Photo Measure is only for producing measurements.</p></div><a className="open-tool" href="https://light-the-peak-estimator.wealthxgroup.chatgpt.site/" target="_blank" rel="noreferrer">Open full screen ↗</a></div>
-        <div className="measure-note"><b>One project only:</b> use Google Earth for roofline/ridgeline when possible, then use Photo Measure for trees, palms, columns, bushes and anything aerial imagery cannot measure well. The current embedded legacy tool still has its own customer fields; those are not part of the new project record and will be removed when we migrate the measurement engine directly into this app.</div>
-        <div className="iframe-wrap"><iframe title="Light The Peak Photo Measure" src="https://light-the-peak-estimator.wealthxgroup.chatgpt.site/" /></div>
+        <div className="page-head purple-head"><div><span className="eyebrow">Optional utility · {project.customer||"Current project"}</span><h1>Measurements</h1><p>Upload a property photo only when needed. This screen measures; it does not create a second customer, quote or estimate.</p></div><button className="primary" onClick={()=>setTab("quote")}>Continue to Quote</button></div>
+        <PhotoMeasure project={project} onApply={(key,value)=>set(key as keyof Project,value as any)} />
       </section>}
 
       {tab==="projects"&&<section className="page">
@@ -527,15 +531,84 @@ export default function App(){
         </section>
       </section>}
 
-      {tab==="handoff"&&<section className="page">
-        <div className="page-head pink-head"><div><span className="eyebrow">Copy-ready Jobber note</span><h1>Jobber Notes</h1><p>No duplicate customer, property or status lines—just the install note.</p></div><button className="primary" onClick={()=>navigator.clipboard.writeText(handoff)}>Copy note</button></div>
-        <textarea className="handoff" readOnly value={handoff} rows={20}/>
-      </section>}
+
 
 
     </main>
   </div>;
 }
+
+
+type MeasureField = "roofFt"|"ridgeFt"|"groundFt"|"garageFt"|"windowFt"|"bushFt";
+
+function PhotoMeasure({project,onApply}:{project:Project;onApply:(key:MeasureField,value:number)=>void}){
+  const [imageUrl,setImageUrl]=useState("");
+  const [referenceFt,setReferenceFt]=useState(9);
+  const [referencePoints,setReferencePoints]=useState<{x:number;y:number}[]>([]);
+  const [measurePoints,setMeasurePoints]=useState<{x:number;y:number}[]>([]);
+  const [mode,setMode]=useState<"reference"|"measure">("reference");
+  const [target,setTarget]=useState<MeasureField>("roofFt");
+  const [lastResult,setLastResult]=useState(0);
+
+  const refPixels=referencePoints.length===2?distance(referencePoints[0],referencePoints[1]):0;
+  const pixelsPerFoot=refPixels>0&&referenceFt>0?refPixels/referenceFt:0;
+
+  function upload(e:any){
+    const file=e.target.files?.[0]; if(!file)return;
+    if(imageUrl)URL.revokeObjectURL(imageUrl);
+    setImageUrl(URL.createObjectURL(file));
+    setReferencePoints([]);setMeasurePoints([]);setLastResult(0);setMode("reference");
+  }
+  function clickImage(e:any){
+    if(!imageUrl)return;
+    const rect=e.currentTarget.getBoundingClientRect();
+    const p={x:(e.clientX-rect.left)/rect.width*100,y:(e.clientY-rect.top)/rect.height*100};
+    if(mode==="reference")setReferencePoints(prev=>prev.length>=2?[p]:[...prev,p]);
+    else if(pixelsPerFoot)setMeasurePoints(prev=>[...prev,p]);
+  }
+  function finish(){
+    if(measurePoints.length<2||!pixelsPerFoot)return;
+    let px=0;for(let i=1;i<measurePoints.length;i++)px+=distance(measurePoints[i-1],measurePoints[i]);
+    setLastResult(px/pixelsPerFoot);
+  }
+  function apply(){if(lastResult>0)onApply(target,Math.round(lastResult*10)/10)}
+
+  return <div className="measure-workspace">
+    <section className="measure-controls">
+      <div className="measure-step"><span>1</span><div><h3>Add photo</h3><p>No customer form. Active project: <b>{project.customer||"Unnamed project"}</b>.</p></div></div>
+      <input className="input" type="file" accept="image/*,.avif" onChange={upload}/>
+
+      <div className="measure-step"><span>2</span><div><h3>Calibrate</h3><p>Use a known garage, door or window dimension. Click its two endpoints on the photo.</p></div></div>
+      <div className="form-grid two">
+        <Field label="Known reference · ft"><input className="input" type="number" min=".1" step=".1" value={referenceFt} onChange={e=>setReferenceFt(+e.target.value)}/></Field>
+        <Field label="Calibration"><div className={"reference-status "+(pixelsPerFoot?"ready":"")}>{pixelsPerFoot?"Reference ready":"Mark two points"}</div></Field>
+      </div>
+      <button className={mode==="reference"?"primary":""} onClick={()=>setMode("reference")}>Mark reference</button>
+
+      <div className="measure-step"><span>3</span><div><h3>Measure</h3><p>Select the project field, then click every turn/corner in sequence.</p></div></div>
+      <Field label="Measurement type"><select className="input" value={target} onChange={e=>setTarget(e.target.value as MeasureField)}>
+        <option value="roofFt">Roofline</option><option value="ridgeFt">Ridgeline</option><option value="groundFt">Ground stake line</option><option value="garageFt">Garage / architectural outline</option><option value="windowFt">Window outline</option><option value="bushFt">Bush / garden</option>
+      </select></Field>
+      <div className="measure-actions"><button className={mode==="measure"?"primary":""} disabled={!pixelsPerFoot} onClick={()=>setMode("measure")}>Draw</button><button disabled={measurePoints.length<2} onClick={finish}>Finish</button><button onClick={()=>{setMeasurePoints([]);setLastResult(0)}}>Clear</button></div>
+      <div className="measure-result"><span>Result</span><strong>{lastResult?lastResult.toFixed(1)+" ft":"—"}</strong><button className="primary" disabled={!lastResult} onClick={apply}>Use in Project</button></div>
+
+      <div className="object-measure-note"><h3>Tree, palm & column wraps</h3><p>Those need height plus circumference/side coverage—not just a line length. They belong here as measurement calculators, not inside another customer or estimate screen. Dedicated wrap calculators are the next measurement upgrade.</p></div>
+    </section>
+    <section className="measure-canvas-card">
+      {!imageUrl?<div className="measure-empty"><b>Add a photo only if needed</b><span>Creating a project does not require an initial photo.</span></div>:
+      <div className="measure-image-wrap" onClick={clickImage}>
+        <img src={imageUrl}/>
+        <svg viewBox="0 0 100 100" preserveAspectRatio="none">
+          {referencePoints.length>1&&<line x1={referencePoints[0].x} y1={referencePoints[0].y} x2={referencePoints[1].x} y2={referencePoints[1].y} className="ref-line"/>}
+          {referencePoints.map((p,i)=><circle key={"r"+i} cx={p.x} cy={p.y} r=".8" className="ref-point"/>)}
+          {measurePoints.length>1&&<polyline points={measurePoints.map(p=>p.x+","+p.y).join(" ")} className="measure-line"/>}
+          {measurePoints.map((p,i)=><circle key={"m"+i} cx={p.x} cy={p.y} r=".8" className="measure-point"/>)}
+        </svg>
+      </div>}
+    </section>
+  </div>
+}
+function distance(a:{x:number;y:number},b:{x:number;y:number}){return Math.hypot(b.x-a.x,b.y-a.y)}
 
 function Nav({active,tone,onClick,children}:{active:boolean;tone:string;onClick:()=>void;children:any}){
   return <button className={"nav-item "+tone+" "+(active?"active":"")} onClick={onClick}><i></i>{children}</button>
