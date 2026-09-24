@@ -352,6 +352,31 @@ export default function App(){
     setPurchaseOrders(prev=>[po,...prev]);setReceiptLines([]);setReceiptMessage("Receipt received into inventory.");
   }
 
+  function projectAction(p:Project,action:string){
+    if(!action)return;
+    if(action==="quote"){setProject(p);setStep(1);setTab("quote");return}
+    if(action==="measure"){setProject(p);setTab("measure");return}
+    if(action==="approved"){
+      const next={...p,status:"Quote Approved" as Status,updatedAt:new Date().toISOString()};
+      setProjects(prev=>prev.map(x=>x.id===p.id?next:x));if(project.id===p.id)setProject(next);return;
+    }
+    if(action==="not-approved"){
+      const next={...p,status:"Quote Not Approved" as Status,updatedAt:new Date().toISOString()};
+      setProjects(prev=>prev.map(x=>x.id===p.id?next:x));if(project.id===p.id)setProject(next);return;
+    }
+    if(action==="new-estimate"){
+      const next={...p,status:"New Estimate" as Status,updatedAt:new Date().toISOString()};
+      setProjects(prev=>prev.map(x=>x.id===p.id?next:x));if(project.id===p.id)setProject(next);return;
+    }
+    if(action==="delete"){deleteProject(p.id)}
+  }
+
+  const approvedProjects=projects.filter(p=>p.status==="Quote Approved");
+  const lostProjects=projects.filter(p=>p.status==="Quote Not Approved");
+  const openProjects=projects.filter(p=>p.status==="New Estimate");
+  const decidedProjects=approvedProjects.length+lostProjects.length;
+  const closingRate=decidedProjects?approvedProjects.length/decidedProjects*100:0;
+
   const handoff=buildHandoff(project,estimate);
 
   return <div className="shell">
@@ -509,10 +534,24 @@ export default function App(){
       </section>}
 
       {tab==="projects"&&<section className="page">
-        <div className="page-head cyan-head"><div><span className="eyebrow">Saved locally on this browser</span><h1>Projects</h1><p>Status is what drives reservation/consumption logic.</p></div><button className="primary" onClick={newProject}>+ New project</button></div>
-        <div className="project-list">
-          {projects.length===0?<div className="empty-state">No saved projects yet.</div>:projects.map(p=><article className="project-row" key={p.id}><div><b>{p.customer||"Unnamed customer"}</b><span>{p.address||"No address"}</span></div><span className={"status-pill "+p.status.toLowerCase().replaceAll(" ","-")}>{p.status}</span><span>{p.service}</span><button onClick={()=>openProject(p)}>Open</button><button className="danger-link" onClick={()=>deleteProject(p.id)}>Delete</button></article>)}
+        <div className="page-head cyan-head">
+          <div><span className="eyebrow">Sales pipeline</span><h1>Projects</h1><p>Track estimates from first quote through approval or loss, and watch the close rate as volume grows.</p></div>
+          <button className="primary" onClick={newProject}>+ New Project</button>
         </div>
+
+        <div className="project-metrics">
+          <Metric label="Total estimates" value={String(projects.length)} tone="cyan"/>
+          <Metric label="New estimates" value={String(openProjects.length)} tone="blue"/>
+          <Metric label="Quote approved" value={String(approvedProjects.length)} tone="green"/>
+          <Metric label="Quote not approved" value={String(lostProjects.length)} tone="red"/>
+          <Metric label="Closing rate" value={closingRate.toFixed(1)+"%"} tone="purple"/>
+        </div>
+
+        {projects.length===0?<div className="empty-state">No projects yet. Start with New Project.</div>:<>
+          <ProjectGroup title="New Estimates" tone="blue" projects={openProjects} onAction={projectAction}/>
+          <ProjectGroup title="Quote Approved" tone="green" projects={approvedProjects} onAction={projectAction}/>
+          <ProjectGroup title="Quote Not Approved" tone="red" projects={lostProjects} onAction={projectAction}/>
+        </>}
       </section>}
 
       {tab==="inventory"&&<section className="page">
@@ -722,6 +761,29 @@ function PhotoMeasure({project,onApply}:{project:Project;onApply:(key:MeasureFie
   </div>
 }
 function distance(a:{x:number;y:number},b:{x:number;y:number}){return Math.hypot(b.x-a.x,b.y-a.y)}
+
+function ProjectGroup({title,tone,projects,onAction}:{title:string;tone:string;projects:Project[];onAction:(p:Project,a:string)=>void}){
+  return <section className={"project-group "+tone}>
+    <div className="project-group-head"><h2>{title}</h2><span>{projects.length}</span></div>
+    {projects.length===0?<div className="project-group-empty">No projects in this category.</div>:<div className="project-list">
+      {projects.map(p=><article className="project-row pipeline-row" key={p.id}>
+        <div className="project-main"><b>{p.customer||"Unnamed customer"}</b><span>{[p.address,p.city].filter(Boolean).join(", ")||"No address"}</span></div>
+        <span>{p.service}</span>
+        <span className={"status-pill "+p.status.toLowerCase().replaceAll(" ","-")}>{p.status}</span>
+        <select className="project-action-select" defaultValue="" onChange={e=>{const a=e.target.value;projectActionReset(e.currentTarget);onAction(p,a)}}>
+          <option value="" disabled>Choose action…</option>
+          <option value="quote">Quote Builder</option>
+          <option value="measure">Measurements</option>
+          {p.status!=="New Estimate"&&<option value="new-estimate">Move to New Estimate</option>}
+          {p.status!=="Quote Approved"&&<option value="approved">Mark Quote Approved</option>}
+          {p.status!=="Quote Not Approved"&&<option value="not-approved">Mark Quote Not Approved</option>}
+          <option value="delete">Delete Project</option>
+        </select>
+      </article>)}
+    </div>}
+  </section>
+}
+function projectActionReset(el:HTMLSelectElement){setTimeout(()=>{el.value=""},0)}
 
 function Nav({active,tone,onClick,children}:{active:boolean;tone:string;onClick:()=>void;children:any}){
   return <button className={"nav-item "+tone+" "+(active?"active":"")} onClick={onClick}><i></i>{children}</button>
