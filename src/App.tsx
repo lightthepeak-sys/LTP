@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 
 type Service = "Christmas" | "Permanent";
-type Status = "Draft" | "Quote Sent" | "Approved" | "Installed" | "Cancelled";
+type Status = "New Estimate" | "Quote Approved" | "Quote Not Approved";
+type LandscapeItem = { id:string; type:"Palm"|"Tree"|"Bush"|"Column"; preset:string; count:number; strandsEach:number };
+type DecorItem = { id:string; type:"Wreath"|"Garland"|"Snowflake"|"Tree Drop"; preset:string; count:number; amount:number };
 type Tab = "new" | "quote" | "measure" | "projects" | "inventory" | "purchasing";
 type POStatus = "Draft" | "Ordered" | "Partially Received" | "Received" | "Cancelled";
 type POLine = { key:string; quantity:number; unitCost:number; received:number };
@@ -11,12 +13,13 @@ type InventoryItem = {
   note?:string; supplier?:string; purchaseTier?:number; legacy?:boolean; damaged?:number;
 };
 type Project = {
-  id:string; updatedAt:string; customer:string; address:string; service:Service; status:Status;
+  id:string; updatedAt:string; customer:string; address:string; city:string; taxRate:number; service:Service; status:Status;
   roofFt:number; ridgeFt:number; groundFt:number; garageFt:number; windowFt:number; c9Color:string;
   stories:number; roofSurface:string; complexity:string; access:string;
   bushFt:number; bushStrandsOverride:number; palmStrands:number; treeStrands:number; columnStrands:number;
   wreathSize:number; wreathQty:number; garlandFt:number; snowflakes:number; treeDrops:number;
   permanentFt:number; permanentCoverage:string; permanentRate:number;
+  landscapeItems?:LandscapeItem[]; decorItems?:DecorItem[];
 };
 
 const STORAGE="ltp-projects-v2";
@@ -81,12 +84,12 @@ const complexityRates:Record<string,number>={
 };
 
 const emptyProject=():Project=>({
-  id:uid(),updatedAt:new Date().toISOString(),customer:"",address:"",service:"Christmas",status:"Draft",
+  id:uid(),updatedAt:new Date().toISOString(),customer:"",address:"",city:"",taxRate:0,service:"Christmas",status:"New Estimate",
   roofFt:0,ridgeFt:0,groundFt:0,garageFt:0,windowFt:0,c9Color:"Sun Warm White",
   stories:1,roofSurface:"Shingle",complexity:"Straight / simple",access:"Standard ladder access",
   bushFt:0,bushStrandsOverride:0,palmStrands:0,treeStrands:0,columnStrands:0,
   wreathSize:48,wreathQty:0,garlandFt:0,snowflakes:0,treeDrops:0,
-  permanentFt:0,permanentCoverage:"Front Only",permanentRate:35
+  permanentFt:0,permanentCoverage:"Front Only",permanentRate:35,landscapeItems:[],decorItems:[]
 });
 
 function loadProjects():Project[]{
@@ -135,7 +138,7 @@ export default function App(){
       return {selling:sell,material,gp:sell-material,gm:sell?sell?((sell-material)/sell)*100:0:0,roofRate:0,
         roofBulbs:0,ridgeBulbs:0,groundBulbs:0,bushStrands:0,miniStrands:0};
     }
-    let base=project.stories===1?8.5:project.stories===2?9.5:10.5;
+    let base=project.stories===1?8:project.stories===2?9:10;
     base+=complexityRates[project.complexity]||0;
     if(project.roofSurface==="Tile")base+=.5;
     if(project.roofSurface==="Metal")base+=.25;
@@ -145,12 +148,17 @@ export default function App(){
     const roofBulbs=Math.ceil((project.roofFt+project.garageFt+project.windowFt)/1.25);
     const ridgeBulbs=Math.ceil(project.ridgeFt/1.25);
     const groundBulbs=Math.ceil(project.groundFt/1.25);
+    const landscapeItems=project.landscapeItems||[];
+    const arrayMini=landscapeItems.reduce((s,i)=>s+(i.count||0)*(i.strandsEach||0),0);
     const bushStrands=project.bushStrandsOverride>0?project.bushStrandsOverride:Math.ceil(project.bushFt/25);
-    const miniStrands=bushStrands+project.palmStrands+project.treeStrands+project.columnStrands;
-    const wreathPrice=project.wreathQty*(project.wreathSize===36?200:project.wreathSize===48?300:600);
+    const legacyMini=bushStrands+project.palmStrands+project.treeStrands+project.columnStrands;
+    const miniStrands=landscapeItems.length?arrayMini:legacyMini;
+    const decorItems=project.decorItems||[];
+    const wreathPrice=decorItems.length?decorItems.filter(i=>i.type==="Wreath").reduce((s,i)=>s+i.count*(i.preset==="36 in"?200:i.preset==="48 in"?300:600),0):project.wreathQty*(project.wreathSize===36?200:project.wreathSize===48?300:600);
     const selling=(project.roofFt+project.garageFt+project.windowFt)*roofRate+
       project.ridgeFt*Math.min(12,roofRate+.5)+project.groundFt*4+miniStrands*35+
-      wreathPrice+project.garlandFt*22;
+      wreathPrice+
+      (decorItems.length?decorItems.filter(i=>i.type==="Garland").reduce((s,i)=>s+i.amount*22,0):project.garlandFt*22);
     const bulbCost=colorCost(project.c9Color);
     const clipCost=project.roofSurface==="Tile"?INV.clipTile.cost:project.roofSurface==="Metal"?INV.clipMetal.cost:INV.clipShingle.cost;
     const existingMinis=Math.max(0,(INV.miniSun.on-(INV.miniSun.damaged||0)));
@@ -160,8 +168,8 @@ export default function App(){
       (project.roofFt+project.ridgeFt+project.groundFt+project.garageFt+project.windowFt)*INV.c9Cord15.cost+
       roofBulbs*clipCost+ridgeBulbs*INV.clipRidge.cost+groundBulbs*INV.stakesCircle.cost+
       minleonUsed*INV.miniSun.cost+s4Used*INV.s4Mini.cost+
-      project.wreathQty*(project.wreathSize===48?INV.wreath48.cost:project.wreathSize===36?85:300)+
-      Math.ceil(project.garlandFt/9)*INV.garland9.cost;
+      (decorItems.length?decorItems.filter(i=>i.type==="Wreath").reduce((s,i)=>s+i.count*(i.preset==="48 in"?INV.wreath48.cost:i.preset==="36 in"?85:300),0):project.wreathQty*(project.wreathSize===48?INV.wreath48.cost:project.wreathSize===36?85:300))+
+      (decorItems.length?decorItems.filter(i=>i.type==="Garland").reduce((s,i)=>s+Math.ceil(i.amount/9)*INV.garland9.cost,0):Math.ceil(project.garlandFt/9)*INV.garland9.cost);
     return {selling,material,gp:selling-material,gm:selling?((selling-material)/selling)*100:0,roofRate,roofBulbs,ridgeBulbs,groundBulbs,bushStrands,miniStrands};
   },[project]);
 
@@ -170,8 +178,9 @@ export default function App(){
     const roofBulbs=Math.ceil((p.roofFt+p.garageFt+p.windowFt)/1.25);
     const ridgeBulbs=Math.ceil(p.ridgeFt/1.25);
     const groundBulbs=Math.ceil(p.groundFt/1.25);
+    const landscapeItems=p.landscapeItems||[];
     const bushes=p.bushStrandsOverride>0?p.bushStrandsOverride:Math.ceil(p.bushFt/25);
-    const minis=bushes+p.palmStrands+p.treeStrands+p.columnStrands;
+    const minis=landscapeItems.length?landscapeItems.reduce((s,i)=>s+(i.count||0)*(i.strandsEach||0),0):bushes+p.palmStrands+p.treeStrands+p.columnStrands;
     const u:Record<string,number>={c9Cord15:p.roofFt+p.ridgeFt+p.groundFt+p.garageFt+p.windowFt,clipRidge:ridgeBulbs,stakesCircle:groundBulbs,c9Traditional:groundBulbs};
     const clip=p.roofSurface==="Tile"?"clipTile":p.roofSurface==="Metal"?"clipMetal":"clipShingle";
     u[clip]=(u[clip]||0)+roofBulbs;
@@ -179,8 +188,14 @@ export default function App(){
     const minleonAvailable=Math.max(0,INV.miniSun.on-(INV.miniSun.damaged||0));
     u.miniSun=Math.min(minleonAvailable,minis);
     u.s4Mini=Math.max(0,minis-u.miniSun);
-    if(p.wreathSize===48)u.wreath48=p.wreathQty;
-    u.garland9=Math.ceil(p.garlandFt/9);
+    const decorItems=p.decorItems||[];
+    if(decorItems.length){
+      u.wreath48=decorItems.filter(i=>i.type==="Wreath"&&i.preset==="48 in").reduce((s,i)=>s+i.count,0);
+      u.garland9=decorItems.filter(i=>i.type==="Garland").reduce((s,i)=>s+Math.ceil(i.amount/9),0);
+    }else{
+      if(p.wreathSize===48)u.wreath48=p.wreathQty;
+      u.garland9=Math.ceil(p.garlandFt/9);
+    }
     return u;
   };
 
@@ -188,7 +203,7 @@ export default function App(){
     const reserved:Record<string,number>={},consumed:Record<string,number>={};
     projects.forEach(p=>{
       const u=projectUsage(p);
-      const bucket=p.status==="Approved"?reserved:p.status==="Installed"?consumed:null;
+      const bucket=p.status==="Quote Approved"?reserved:null;
       if(!bucket)return;
       Object.entries(u).forEach(([k,v])=>bucket[k]=(bucket[k]||0)+v);
     });
@@ -302,8 +317,10 @@ export default function App(){
           <div className="form-grid two">
             <Field label="Customer name"><input className="input" value={project.customer} onChange={e=>set("customer",e.target.value)}/></Field>
             <Field label="Property address"><input className="input" value={project.address} onChange={e=>set("address",e.target.value)}/></Field>
+            <Field label="City"><input className="input" value={project.city||""} onChange={e=>{const city=e.target.value;setProject(p=>({...p,city,taxRate:suggestTaxRate(city),updatedAt:new Date().toISOString()}))}} /></Field>
+            <Field label="Suggested sales tax"><div className="tax-suggestion"><b>{(project.taxRate||0).toFixed(1)}%</b><span>{project.city?taxCountyNote(project.city):"Enter city to suggest rate"}</span></div></Field>
             <Field label="Service"><select className="input" value={project.service} onChange={e=>set("service",e.target.value as Service)}><option>Christmas</option><option>Permanent</option></select></Field>
-            <Field label="Initial status"><select className="input" value={project.status} onChange={e=>set("status",e.target.value as Status)}>{["Draft","Quote Sent","Approved","Installed","Cancelled"].map(x=><option key={x}>{x}</option>)}</select></Field>
+            <Field label="Status"><select className="input" value={project.status} onChange={e=>set("status",e.target.value as Status)}>{["New Estimate","Quote Approved","Quote Not Approved"].map(x=><option key={x}>{x}</option>)}</select></Field>
           </div>
           <div className="new-project-actions">
             <button className="primary" onClick={()=>{saveProject();setTab("measure")}}>Create & Measure</button>
@@ -613,6 +630,33 @@ function distance(a:{x:number;y:number},b:{x:number;y:number}){return Math.hypot
 function Nav({active,tone,onClick,children}:{active:boolean;tone:string;onClick:()=>void;children:any}){
   return <button className={"nav-item "+tone+" "+(active?"active":"")} onClick={onClick}><i></i>{children}</button>
 }
+
+
+function suggestTaxRate(city:string){
+  const v=city.trim().toLowerCase();
+  const orange=["orlando","windermere","winter garden","lake nona","winter park","ocoee","apopka"];
+  const lake=["clermont","minneola","groveland"];
+  const osceola=["kissimmee","celebration","st cloud","saint cloud"];
+  const polk=["winter haven","lakeland","davenport","auburndale","hainse city","haines city"];
+  if(orange.includes(v))return 6.5;
+  if(lake.includes(v))return 7.0;
+  if(osceola.includes(v))return 7.5;
+  if(polk.includes(v))return 7.0;
+  return 6.0;
+}
+function taxCountyNote(city:string){
+  const r=suggestTaxRate(city);
+  if(r===6.5)return "6% Florida + 0.5% county surtax suggestion";
+  if(r===7.0)return "6% Florida + 1.0% county surtax suggestion";
+  if(r===7.5)return "6% Florida + 1.5% county surtax suggestion";
+  return "Base Florida rate only — verify exact county/address";
+}
+const LANDSCAPE_PRESETS:Record<string,{type:LandscapeItem["type"];strands:number}> = {
+  "Small Palm":{type:"Palm",strands:4},"Standard Palm":{type:"Palm",strands:10},"Large Palm":{type:"Palm",strands:16},
+  "Small Tree":{type:"Tree",strands:6},"Standard Tree":{type:"Tree",strands:12},"Large Tree":{type:"Tree",strands:20},
+  "Small Bush":{type:"Bush",strands:1},"Standard Bush":{type:"Bush",strands:2},"Large Bush":{type:"Bush",strands:4},
+  "Small Column":{type:"Column",strands:2},"Standard Column":{type:"Column",strands:4},"Large Column":{type:"Column",strands:6}
+};
 
 function colorCost(color:string){
   if(color==="Sun Warm White")return INV.c9Sun.cost;
