@@ -221,8 +221,8 @@ export default function App(){
         <Nav active={tab==="projects"} tone="cyan" onClick={()=>setTab("projects")}>Projects</Nav>
         <Nav active={tab==="inventory"} tone="green" onClick={()=>setTab("inventory")}>Inventory</Nav>
         <Nav active={tab==="purchasing"} tone="orange" onClick={()=>setTab("purchasing")}>Purchasing</Nav>
-        <Nav active={tab==="handoff"} tone="pink" onClick={()=>setTab("handoff")}>Jobber Handoff</Nav>
-        <Nav active={tab==="finance"} tone="indigo" onClick={()=>setTab("finance")}>Company Finance</Nav>
+        <Nav active={tab==="handoff"} tone="pink" onClick={()=>setTab("handoff")}>Jobber Notes</Nav>
+        <Nav active={tab==="finance"} tone="indigo" onClick={()=>setTab("finance")}>Company Corner</Nav>
       </nav>
       <button className="new-project" onClick={newProject}>+ New project</button>
     </aside>
@@ -230,16 +230,15 @@ export default function App(){
     <main className="main">
       {tab==="quote"&&<section className="page">
         <div className="page-head blue-head">
-          <div><span className="eyebrow">Virtual estimating workflow</span><h1>Build the quote without guessing.</h1><p>Measure first, answer a few property questions, then let the system calculate materials, price, inventory impact and handoff notes.</p></div>
+          <div><span className="eyebrow">One project · one source of truth</span><h1>Build the quote without duplicating information.</h1><p>Customer data lives once. Property, landscape and lighting measurements all feed the same project, price, material list and Jobber notes.</p></div>
           <div className="head-actions"><span className={"status-pill "+project.status.toLowerCase().replaceAll(" ","-")}>{project.status}</span><button className="primary" onClick={saveProject}>{savedFlash||"Save project"}</button></div>
         </div>
 
-        <div className="stepper">
+        <div className="stepper four-steps">
           <StepDot n={1} label="Project" active={step===1} done={step>1} onClick={()=>setStep(1)}/>
-          <StepDot n={2} label="Lighting scope" active={step===2} done={step>2} onClick={()=>setStep(2)}/>
-          <StepDot n={3} label="Property" active={step===3} done={step>3} onClick={()=>setStep(3)}/>
-          <StepDot n={4} label="Landscape & décor" active={step===4} done={step>4} onClick={()=>setStep(4)}/>
-          <StepDot n={5} label="Review" active={step===5} done={false} onClick={()=>setStep(5)}/>
+          <StepDot n={2} label="Property" active={step===2} done={step>2} onClick={()=>setStep(2)}/>
+          <StepDot n={3} label="Landscape & décor" active={step===3} done={step>3} onClick={()=>setStep(3)}/>
+          <StepDot n={4} label="Lighting scope" active={step===4} done={false} onClick={()=>setStep(4)}/>
         </div>
 
         <div className={"wizard-card step-"+step}>
@@ -253,31 +252,8 @@ export default function App(){
             </div>
           </>}
 
-          {step===2&&project.service==="Christmas"&&<>
-            <div className="section-title"><span>2</span><div><h2>Lighting scope</h2><p>Enter Google Earth measurements first. Use Photo Measure only where aerial measurement is weak.</p></div></div>
-            <div className="form-grid three">
-              <Field label="Main roofline · ft"><input className="input" type="number" min="0" value={project.roofFt} onChange={e=>set("roofFt",+e.target.value)}/></Field>
-              <Field label="Ridgeline · ft"><input className="input" type="number" min="0" value={project.ridgeFt} onChange={e=>set("ridgeFt",+e.target.value)}/></Field>
-              <Field label="Ground-stake line · ft" hint="Automatically burns down Traditional Warm C9 inventory."><input className="input" type="number" min="0" value={project.groundFt} onChange={e=>set("groundFt",+e.target.value)}/></Field>
-              <Field label="Garage / architectural outline · ft"><input className="input" type="number" min="0" value={project.garageFt} onChange={e=>set("garageFt",+e.target.value)}/></Field>
-              <Field label="Window outline · ft"><input className="input" type="number" min="0" value={project.windowFt} onChange={e=>set("windowFt",+e.target.value)}/></Field>
-              <Field label="C9 color / pattern"><select className="input" value={project.c9Color} onChange={e=>set("c9Color",e.target.value)}>{["Sun Warm White","Pure White","Cool White","Red","Green","Red / Green","Multicolor","Blue","Pink","Purple","Yellow"].map(x=><option key={x}>{x}</option>)}</select></Field>
-            </div>
-            <div className="live-calc blue-strip"><b>{project.roofFt} ft roofline</b> at 15-inch spacing = <b>{Math.ceil(project.roofFt/1.25)} bulbs</b>. Ridgeline and outline footage are calculated separately, not hidden inside the roofline number.</div>
-          </>}
-
-          {step===2&&project.service==="Permanent"&&<>
-            <div className="section-title"><span>2</span><div><h2>Permanent lighting scope</h2><p>Permanent inventory uses exact footage. No automatic cut or waste allowance.</p></div></div>
-            <div className="form-grid three">
-              <Field label="Measured footage"><input className="input" type="number" min="0" value={project.permanentFt} onChange={e=>set("permanentFt",+e.target.value)}/></Field>
-              <Field label="Coverage"><select className="input" value={project.permanentCoverage} onChange={e=>set("permanentCoverage",e.target.value)}><option>Front Only</option><option>Front & Sides</option><option>All Around</option></select></Field>
-              <Field label="Selling rate · $/ft" hint="Owner/company setting; current working value."><input className="input" type="number" min="0" step=".5" value={project.permanentRate} onChange={e=>set("permanentRate",+e.target.value)}/></Field>
-            </div>
-            <div className="live-calc blue-strip"><b>{project.permanentFt} ft required</b> against <b>200 ft current permanent inventory</b>. No waste deduction.</div>
-          </>}
-
-          {step===3&&<>
-            <div className="section-title"><span>3</span><div><h2>Property difficulty</h2><p>This is where the rate changes. The VA describes the property; the system chooses the rate.</p></div></div>
+          {step===2&&<>
+            <div className="section-title"><span>2</span><div><h2>Property</h2><p>Describe the property before choosing the lighting scope. These answers drive difficulty, hardware and pricing.</p></div></div>
             <div className="form-grid two">
               <Field label="Stories"><select className="input" value={project.stories} onChange={e=>set("stories",+e.target.value)}><option value={1}>1 story</option><option value={2}>2 stories</option><option value={3}>3 stories</option></select></Field>
               <Field label="Roof surface"><select className="input" value={project.roofSurface} onChange={e=>set("roofSurface",e.target.value)}><option>Shingle</option><option>Tile</option><option>Metal</option><option>Mixed / Other</option></select></Field>
@@ -287,8 +263,8 @@ export default function App(){
             {project.service==="Christmas"&&<div className="rate-display"><span>Auto roofline rate</span><strong>{money(estimate.roofRate)}/ft</strong><small>Target range is constrained to $8–$12/ft.</small></div>}
           </>}
 
-          {step===4&&<>
-            <div className="section-title"><span>4</span><div><h2>Landscape & décor</h2><p>Add only what is actually in the design. Use the measurement tool for trees, columns and irregular bushes when needed.</p></div></div>
+          {step===3&&<>
+            <div className="section-title"><span>3</span><div><h2>Landscape & décor</h2><p>Add only what is actually in the design. Use the measurement tool for trees, columns and irregular bushes when needed.</p></div></div>
             <div className="subgroup green-group">
               <h3>Mini-light areas</h3>
               <div className="form-grid four">
@@ -312,37 +288,56 @@ export default function App(){
             </div>
           </>}
 
-          {step===5&&<>
-            <div className="section-title"><span>5</span><div><h2>Review before Jobber</h2><p>The quote is still formalized in Jobber. This screen catches pricing, material and inventory problems first.</p></div></div>
-            <div className="metrics six">
+          {step===4&&project.service==="Christmas"&&<>
+            <div className="section-title"><span>4</span><div><h2>Lighting scope</h2><p>Enter the final lighting measurements for this project. Use Google Earth first and Photo Measure only where it adds accuracy.</p></div></div>
+            <div className="form-grid three">
+              <Field label="Main roofline · ft"><input className="input" type="number" min="0" value={project.roofFt} onChange={e=>set("roofFt",+e.target.value)}/></Field>
+              <Field label="Ridgeline · ft"><input className="input" type="number" min="0" value={project.ridgeFt} onChange={e=>set("ridgeFt",+e.target.value)}/></Field>
+              <Field label="Ground-stake line · ft" hint="Automatically burns down Traditional Warm C9 inventory."><input className="input" type="number" min="0" value={project.groundFt} onChange={e=>set("groundFt",+e.target.value)}/></Field>
+              <Field label="Garage / architectural outline · ft"><input className="input" type="number" min="0" value={project.garageFt} onChange={e=>set("garageFt",+e.target.value)}/></Field>
+              <Field label="Window outline · ft"><input className="input" type="number" min="0" value={project.windowFt} onChange={e=>set("windowFt",+e.target.value)}/></Field>
+              <Field label="C9 color / pattern"><select className="input" value={project.c9Color} onChange={e=>set("c9Color",e.target.value)}>{["Sun Warm White","Pure White","Cool White","Red","Green","Red / Green","Multicolor","Blue","Pink","Purple","Yellow"].map(x=><option key={x}>{x}</option>)}</select></Field>
+            </div>
+            <div className="live-calc blue-strip"><b>{project.roofFt} ft roofline</b> at 15-inch spacing = <b>{Math.ceil(project.roofFt/1.25)} bulbs</b>. Ridgeline and outline footage are calculated separately, not hidden inside the roofline number.</div>
+            <div className="quote-summary-inline">
               <Metric label="Suggested pre-tax price" value={money(estimate.selling)} tone="blue"/>
               <Metric label="Material cost" value={money(estimate.material)} tone="purple"/>
               <Metric label="Gross profit" value={money(estimate.gp)} tone="green"/>
               <Metric label="Gross margin" value={estimate.gm.toFixed(1)+"%"} tone="green"/>
-              <Metric label="Project status" value={project.status} tone="orange"/>
-              <Metric label="Inventory shortages" value={String(shortages.length)} tone={shortages.length?"red":"green"}/>
             </div>
-            {project.service==="Christmas"&&<div className="review-grid">
-              <div className="review-card"><h3>C9</h3><p>Roof / outlines: <b>{estimate.roofBulbs} bulbs</b></p><p>Ridgeline: <b>{estimate.ridgeBulbs} bulbs + ridge clips</b></p><p>Ground: <b>{estimate.groundBulbs} Traditional Warm bulbs + stakes</b></p></div>
-              <div className="review-card"><h3>Mini strands</h3><p>Bushes: <b>{estimate.bushStrands}</b></p><p>Total mini strands: <b>{estimate.miniStrands}</b></p><p>Existing Minleon Sun Warm is consumed before new S4 NxG replenishment.</p></div>
-              <div className="review-card"><h3>Decor</h3><p>{project.wreathQty} × {project.wreathSize}" wreath</p><p>{project.garlandFt} ft garland</p><p>{project.snowflakes} snowflakes · {project.treeDrops} tree drops</p></div>
-            </div>}
-            {(project.snowflakes>0||project.treeDrops>0)&&<div className="warning-box">This project contains décor that does not yet have a finalized company selling-price rule. Company review is required before sending the Jobber quote.</div>}
             {shortages.length>0&&<div className="warning-box red-box"><b>Inventory shortage:</b> {shortages.map(([k,u])=>INV[k]?.name+" ("+qty(u-availability(k).available)+" short)").join(", ")}</div>}
-            <div className="review-actions"><button className="primary" onClick={saveProject}>{savedFlash||"Save / update project"}</button><button onClick={()=>setTab("handoff")}>Open Jobber handoff</button><button onClick={()=>setTab("inventory")}>Check inventory</button></div>
+            <div className="review-actions"><button className="primary" onClick={saveProject}>{savedFlash||"Save project"}</button><button onClick={()=>setTab("handoff")}>Open Jobber notes</button></div>
+          </>}
+
+          {step===4&&project.service==="Permanent"&&<>
+            <div className="section-title"><span>4</span><div><h2>Permanent lighting scope</h2><p>Permanent inventory uses exact footage. No automatic cut or waste allowance.</p></div></div>
+            <div className="form-grid three">
+              <Field label="Measured footage"><input className="input" type="number" min="0" value={project.permanentFt} onChange={e=>set("permanentFt",+e.target.value)}/></Field>
+              <Field label="Coverage"><select className="input" value={project.permanentCoverage} onChange={e=>set("permanentCoverage",e.target.value)}><option>Front Only</option><option>Front & Sides</option><option>All Around</option></select></Field>
+              <Field label="Selling rate · $/ft" hint="Owner/company setting; current working value."><input className="input" type="number" min="0" step=".5" value={project.permanentRate} onChange={e=>set("permanentRate",+e.target.value)}/></Field>
+            </div>
+            <div className="live-calc blue-strip"><b>{project.permanentFt} ft required</b> against <b>200 ft current permanent inventory</b>. No waste deduction.</div>
+            <div className="quote-summary-inline">
+              <Metric label="Suggested pre-tax price" value={money(estimate.selling)} tone="blue"/>
+              <Metric label="Material cost" value={money(estimate.material)} tone="purple"/>
+              <Metric label="Gross profit" value={money(estimate.gp)} tone="green"/>
+              <Metric label="Gross margin" value={estimate.gm.toFixed(1)+"%"} tone="green"/>
+            </div>
+            {shortages.length>0&&<div className="warning-box red-box"><b>Inventory shortage:</b> {shortages.map(([k,u])=>INV[k]?.name+" ("+qty(u-availability(k).available)+" short)").join(", ")}</div>}
+            <div className="review-actions"><button className="primary" onClick={saveProject}>{savedFlash||"Save project"}</button><button onClick={()=>setTab("handoff")}>Open Jobber notes</button></div>
           </>}
 
           <div className="wizard-actions">
             <button disabled={step===1} onClick={()=>setStep(s=>Math.max(1,s-1))}>← Back</button>
-            <span>Step {step} of 5</span>
-            <button className="primary" disabled={step===5} onClick={()=>setStep(s=>Math.min(5,s+1))}>Next →</button>
+            <span>Step {step} of 4</span>
+            <button className="primary" disabled={step===4} onClick={()=>setStep(s=>Math.min(4,s+1))}>Next →</button>
           </div>
         </div>
       </section>}
 
       {tab==="measure"&&<section className="page measure-page">
-        <div className="page-head purple-head"><div><span className="eyebrow">Secondary measurement path</span><h1>Photo Measure</h1><p>Use this when Google Earth cannot reliably measure bushes, trunks, columns, side depth, garage-facing references or other photo-visible areas.</p></div><a className="open-tool" href="https://light-the-peak-estimator.wealthxgroup.chatgpt.site/" target="_blank" rel="noreferrer">Open full screen ↗</a></div>
-        <div className="measure-note"><b>Primary workflow:</b> Google Earth / known measurements → Quote Builder. <b>Secondary workflow:</b> Photo Measure for hard-to-measure areas → enter the result back into the quote. Direct data sync is the next integration step.</div>
+        <div className="page-head purple-head"><div><span className="eyebrow">Measurement tool for the current project</span><h1>Photo Measure</h1><p><b>{project.customer||"Current project"}</b>{project.address?" · "+project.address:""}. Customer information belongs to the project record once; Photo Measure is only for producing measurements.</p></div><a className="open-tool" href="https://light-the-peak-estimator.wealthxgroup.chatgpt.site/" target="_blank" rel="noreferrer">Open full screen ↗</a></div>
+        <div className="measure-note"><b>One project only:</b> use Google Earth for roofline/ridgeline when possible, then use Photo Measure for trees, palms, columns, bushes and anything aerial imagery cannot measure well. The current embedded legacy tool still has its own customer fields; those are not part of the new project record and will be removed when we migrate the measurement engine directly into this app.</div>
         <div className="iframe-wrap"><iframe title="Light The Peak Photo Measure" src="https://light-the-peak-estimator.wealthxgroup.chatgpt.site/" /></div>
       </section>}
 
@@ -374,12 +369,12 @@ export default function App(){
       </section>}
 
       {tab==="handoff"&&<section className="page">
-        <div className="page-head pink-head"><div><span className="eyebrow">Jobber remains the field system</span><h1>Technician handoff</h1><p>Copy this internal plan into Jobber after the customer quote is finalized.</p></div></div>
+        <div className="page-head pink-head"><div><span className="eyebrow">Copy-ready Jobber note</span><h1>Jobber Notes</h1><p>No duplicate customer, property or status lines—just the install note.</p></div><button className="primary" onClick={()=>navigator.clipboard.writeText(handoff)}>Copy note</button></div>
         <textarea className="handoff" readOnly value={handoff} rows={20}/>
       </section>}
 
       {tab==="finance"&&<section className="page">
-        <div className="page-head indigo-head"><div><span className="eyebrow">Company finance</span><h1>Cash allocation & reserves</h1><p>This is company cash planning—not a replacement for accounting or Jobber.</p></div></div>
+        <div className="page-head indigo-head"><div><span className="eyebrow">Private company area</span><h1>Company Corner</h1><p>This is company cash planning—not a replacement for accounting or Jobber.</p></div></div>
         <div className="finance-controls"><Field label="Sales tax rate" hint="Use the actual job rate from Jobber when known."><input className="input" type="number" min="0" step=".1" value={salesTaxRate} onChange={e=>setSalesTaxRate(+e.target.value)}/></Field></div>
         <div className="metrics six">
           <Metric label="Pre-tax selling price" value={money(estimate.selling)} tone="blue"/>
@@ -420,10 +415,6 @@ function applyColor(u:Record<string,number>,color:string,count:number){
 }
 function buildHandoff(p:Project,e:any){
   if(p.service==="Permanent")return [
-    "CUSTOMER: "+(p.customer||"—"),
-    "PROPERTY: "+(p.address||"—"),
-    "STATUS: "+p.status,
-    "",
     "PERMANENT LIGHTING",
     "Coverage: "+p.permanentCoverage,
     "Measured footage: "+p.permanentFt+" ft",
@@ -432,10 +423,6 @@ function buildHandoff(p:Project,e:any){
     "TECH: Record actual installed footage and explain any variance."
   ].join("\n");
   return [
-    "CUSTOMER: "+(p.customer||"—"),
-    "PROPERTY: "+(p.address||"—"),
-    "STATUS: "+p.status,
-    "",
     "C9 ROOFLINE / OUTLINES",
     "Roofline: "+p.roofFt+" ft",
     "Garage / architectural outline: "+p.garageFt+" ft",
