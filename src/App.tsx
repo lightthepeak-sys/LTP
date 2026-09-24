@@ -82,6 +82,22 @@ const complexityRates:Record<string,number>={
   "Complex":1,
   "Very complex / custom":1.5
 };
+const COMPLEXITY_GUIDE=[
+  {key:"Straight / simple",icon:"━",title:"Straight / Simple",note:"Mostly one clean eave/run. No meaningful peaks or returns."},
+  {key:"Light peaks",icon:"⌃",title:"Light Peaks",note:"One small peak or simple change in roof direction."},
+  {key:"Moderate peaks",icon:"⌃⌃",title:"Moderate Peaks",note:"Multiple visible peaks/returns, but still straightforward access."},
+  {key:"Complex",icon:"⌃╱⌃",title:"Complex",note:"Several peaks, offsets, second-story transitions or difficult geometry."},
+  {key:"Very complex / custom",icon:"⌃╱⌃╲",title:"Very Complex",note:"Custom architecture, many transitions, unusual access or detailed layout."}
+];
+const REFERENCE_PRESETS=[
+  {key:"garage1",label:"1-car garage door",feet:9,note:"Use when the visible opening clearly matches a standard single-car garage."},
+  {key:"garage2",label:"2-car garage door",feet:16,note:"Use when the visible opening clearly matches a standard double garage."},
+  {key:"door1",label:"Exterior door",feet:3,note:"Standard single exterior door width."},
+  {key:"door2",label:"Double entry door",feet:6,note:"Two standard 3-ft exterior doors."},
+  {key:"window",label:"Common window",feet:3,note:"Use only when the window clearly matches a common 3-ft width; otherwise choose Custom."},
+  {key:"custom",label:"Custom known dimension",feet:0,note:"Use whenever the actual garage, door or window dimension is known or the preset does not clearly fit."}
+];
+
 
 const emptyProject=():Project=>({
   id:uid(),updatedAt:new Date().toISOString(),customer:"",address:"",city:"",taxRate:0,service:"Christmas",status:"New Estimate",
@@ -446,10 +462,14 @@ export default function App(){
           {step===1&&<>
             <div className="section-title"><span>1</span><div><h2>Property</h2><p>These answers create a pricing suggestion and determine the right hardware. They do not lock your selling price.</p></div></div>
             <div className="form-grid two">
-              <Field label="Stories"><select className="input" value={project.stories} onChange={e=>set("stories",+e.target.value)}><option value={1}>1 story</option><option value={2}>2 stories</option><option value={3}>3 stories</option></select></Field>
+              <Field label="Stories" hint="Choose the highest level that contains the lighting scope, not the total floors of the home."><select className="input" value={project.stories} onChange={e=>set("stories",+e.target.value)}><option value={1}>1 story</option><option value={2}>2 stories</option><option value={3}>3 stories</option></select></Field>
               <Field label="Roof surface"><select className="input" value={project.roofSurface} onChange={e=>set("roofSurface",e.target.value)}><option>Shingle</option><option>Tile</option><option>Metal</option><option>Mixed / Other</option></select></Field>
-              <Field label="Roofline complexity"><select className="input" value={project.complexity} onChange={e=>set("complexity",e.target.value)}>{Object.keys(complexityRates).map(x=><option key={x}>{x}</option>)}</select></Field>
-              <Field label="Access"><select className="input" value={project.access} onChange={e=>set("access",e.target.value)}><option>Standard ladder access</option><option>Difficult / steep</option><option>Special equipment</option></select></Field>
+              <div className="field complexity-field"><span>Roofline complexity</span>
+                <div className="complexity-grid">{COMPLEXITY_GUIDE.map(item=><button type="button" key={item.key} className={"complexity-option "+(project.complexity===item.key?"selected":"")} onClick={()=>set("complexity",item.key)}>
+                  <i>{item.icon}</i><b>{item.title}</b><small>{item.note}</small>
+                </button>)}</div>
+              </div>
+              <Field label="Access" hint="Standard = normal ladder access. Difficult/steep = slower setup or roof movement. Special equipment = lift or unusual access."><select className="input" value={project.access} onChange={e=>set("access",e.target.value)}><option>Standard ladder access</option><option>Difficult / steep</option><option>Special equipment</option></select></Field>
             </div>
             {project.service==="Christmas"&&<div className="rate-display suggestion-rate"><span>Suggested roofline rate</span><strong>{money(estimate.suggestedRoofRate)}/ft</strong><small>Suggestion only. Simple 1-story starts at $8/ft.</small></div>}
           </>}
@@ -718,6 +738,7 @@ type MeasureField = "roofFt"|"ridgeFt"|"groundFt"|"garageFt"|"windowFt"|"bushFt"
 
 function PhotoMeasure({project,onApply}:{project:Project;onApply:(key:MeasureField,value:number)=>void}){
   const [imageUrl,setImageUrl]=useState("");
+  const [referencePreset,setReferencePreset]=useState("garage1");
   const [referenceFt,setReferenceFt]=useState(9);
   const [referencePoints,setReferencePoints]=useState<{x:number;y:number}[]>([]);
   const [measurePoints,setMeasurePoints]=useState<{x:number;y:number}[]>([]);
@@ -752,11 +773,24 @@ function PhotoMeasure({project,onApply}:{project:Project;onApply:(key:MeasureFie
     <section className="measure-controls">
       <div className="measure-step"><span>1</span><div><h3>Add photo</h3><p>No customer form. Active project: <b>{project.customer||"Unnamed project"}</b>.</p></div></div>
       <input className="input" type="file" accept="image/*,.avif" onChange={upload}/>
+      <div className="measure-quick-guide">
+        <b>Quick guide</b>
+        <ol>
+          <li>Use the clearest front/side photo available.</li>
+          <li>Choose the largest reliable reference visible in the same plane as the area being measured.</li>
+          <li>Garage first, then door, then window. Use Custom when the actual dimension is known.</li>
+          <li>Draw each roofline/ridge section once. Clear the measurement before starting a different area.</li>
+          <li>For trees, palms and columns, use dedicated wrap presets/measurements rather than guessing from height alone.</li>
+        </ol>
+      </div>
 
-      <div className="measure-step"><span>2</span><div><h3>Calibrate</h3><p>Use a known garage, door or window dimension. Click its two endpoints on the photo.</p></div></div>
+      <div className="measure-step"><span>2</span><div><h3>Choose reference</h3><p>Pick the visible reference that best matches the photo. The app loads the reference width automatically, then you click the two endpoints.</p></div></div>
+      <div className="reference-presets">{REFERENCE_PRESETS.map(ref=><button type="button" key={ref.key} className={referencePreset===ref.key?"selected":""} onClick={()=>{setReferencePreset(ref.key);if(ref.feet>0)setReferenceFt(ref.feet);setReferencePoints([])}}>
+        <b>{ref.label}</b><span>{ref.feet?ref.feet+" ft":"Enter size"}</span><small>{ref.note}</small>
+      </button>)}</div>
       <div className="form-grid two">
-        <Field label="Known reference · ft"><input className="input" type="number" min=".1" step=".1" value={referenceFt} onChange={e=>setReferenceFt(+e.target.value)}/></Field>
-        <Field label="Calibration"><div className={"reference-status "+(pixelsPerFoot?"ready":"")}>{pixelsPerFoot?"Reference ready":"Mark two points"}</div></Field>
+        <Field label={referencePreset==="custom"?"Custom reference · ft":"Reference width"}><input className="input" type="number" min=".1" step=".1" value={referenceFt} onChange={e=>setReferenceFt(+e.target.value)} /></Field>
+        <Field label="Calibration"><div className={"reference-status "+(pixelsPerFoot?"ready":"")}>{pixelsPerFoot?"Reference ready · draw measurements":"Click Mark reference, then two endpoints"}</div></Field>
       </div>
       <button className={mode==="reference"?"primary":""} onClick={()=>setMode("reference")}>Mark reference</button>
 
