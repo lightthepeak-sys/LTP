@@ -222,7 +222,6 @@ export default function App(){
         <Nav active={tab==="inventory"} tone="green" onClick={()=>setTab("inventory")}>Inventory</Nav>
         <Nav active={tab==="purchasing"} tone="orange" onClick={()=>setTab("purchasing")}>Purchasing</Nav>
         <Nav active={tab==="handoff"} tone="pink" onClick={()=>setTab("handoff")}>Jobber Notes</Nav>
-        <Nav active={tab==="finance"} tone="indigo" onClick={()=>setTab("finance")}>Company Corner</Nav>
       </nav>
       <button className="new-project" onClick={newProject}>+ New project</button>
     </aside>
@@ -373,19 +372,7 @@ export default function App(){
         <textarea className="handoff" readOnly value={handoff} rows={20}/>
       </section>}
 
-      {tab==="finance"&&<section className="page">
-        <div className="page-head indigo-head"><div><span className="eyebrow">Private company area</span><h1>Company Corner</h1><p>This is company cash planning—not a replacement for accounting or Jobber.</p></div></div>
-        <div className="finance-controls"><Field label="Sales tax rate" hint="Use the actual job rate from Jobber when known."><input className="input" type="number" min="0" step=".1" value={salesTaxRate} onChange={e=>setSalesTaxRate(+e.target.value)}/></Field></div>
-        <div className="metrics six">
-          <Metric label="Pre-tax selling price" value={money(estimate.selling)} tone="blue"/>
-          <Metric label={"Sales Tax "+salesTaxRate.toFixed(1)+"%"} value={money(estimate.selling*salesTaxRate/100)} tone="orange"/>
-          <Metric label="Profit Reserve 5%" value={money(estimate.selling*.05)} tone="green"/>
-          <Metric label="Owner Compensation 15%" value={money(estimate.selling*.15)} tone="purple"/>
-          <Metric label="Income Tax Reserve 10%" value={money(estimate.selling*.10)} tone="indigo"/>
-          <Metric label="Operating Expenses 70%" value={money(estimate.selling*.70)} tone="cyan"/>
-        </div>
-        <div className="finance-note">Weekly Owner Compensation requirement: <b>$1,500</b>. This project contributes <b>{money(estimate.selling*.15)}</b>. Sales tax is shown separately and is not part of the Profit First allocation base.</div>
-      </section>}
+
     </main>
   </div>;
 }
