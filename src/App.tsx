@@ -27,6 +27,8 @@ export default function App(){
   const [tab,setTab]=useState<Tab>("quote");
   const [customer,setCustomer]=useState("");
   const [address,setAddress]=useState("");
+  const [projectStatus,setProjectStatus]=useState("Draft");
+  const [salesTaxRate,setSalesTaxRate]=useState(7);
   const [stories,setStories]=useState(2);
   const [roof,setRoof]=useState("Shingle");
   const [complexity,setComplexity]=useState("A few peaks");
@@ -67,7 +69,7 @@ export default function App(){
     garland:garlandFt
   };
 
-  const handoff=`CUSTOMER: ${customer || "—"}\nPROPERTY: ${address || "—"}\n\nROOFLINE: ${roofFt} ft • ${color} • ${roof} • ${stories} story • ${complexity}\nEXPECTED: ${calc.roofBulbs} C9 bulbs / ${calc.roofBulbs} roof clips / ${roofFt} ft 15-inch socket cord\n\nGROUND STAKE: ${groundFt} ft • Traditional Warm phase-out inventory\nEXPECTED: ${calc.groundBulbs} C9 bulbs / ${calc.groundBulbs} stakes\n\nBUSHES: ${bushFt} measured ft → ${calc.bushStrands} mini strands\nPALMS: ${palmStrands} mini strands\nTOTAL MINIS: ${calc.minis}\nGARLAND: ${garlandFt} ft\n\nTECH: Record actual material used and explain any over/under variance.`;
+  const handoff=`CUSTOMER: ${customer || "—"}\nPROPERTY: ${address || "—"}\nSTATUS: ${projectStatus}\n\nROOFLINE: ${roofFt} ft • ${color} • ${roof} • ${stories} story • ${complexity}\nEXPECTED: ${calc.roofBulbs} C9 bulbs / ${calc.roofBulbs} roof clips / ${roofFt} ft 15-inch socket cord\n\nGROUND STAKE: ${groundFt} ft • Traditional Warm phase-out inventory\nEXPECTED: ${calc.groundBulbs} C9 bulbs / ${calc.groundBulbs} stakes\n\nBUSHES: ${bushFt} measured ft → ${calc.bushStrands} mini strands\nPALMS: ${palmStrands} mini strands\nTOTAL MINIS: ${calc.minis}\nGARLAND: ${garlandFt} ft\n\nTECH: Record actual material used and explain any over/under variance.`;
 
   function switchRole(next:Role){
     setRole(next);
@@ -93,7 +95,7 @@ export default function App(){
           {nav("inventory","Inventory")}
           {nav("purchasing","Purchasing")}
           {nav("handoff","Jobber Handoff")}
-          {nav("finance","Owner Finance",true)}
+          {nav("finance","Company Finance",true)}
         </nav>
       </aside>
 
@@ -107,6 +109,7 @@ export default function App(){
           <div className="form-grid">
             <Field label="Customer name"><input className="input" value={customer} onChange={e=>setCustomer(e.target.value)} /></Field>
             <Field label="Property address"><input className="input" value={address} onChange={e=>setAddress(e.target.value)} /></Field>
+            <Field label="Project status"><select className="input" value={projectStatus} onChange={e=>setProjectStatus(e.target.value)}><option>Draft</option><option>Quote Sent</option><option>Approved</option><option>Installed</option><option>Cancelled</option></select></Field>
             <Field label="Stories"><select className="input" value={stories} onChange={e=>setStories(+e.target.value)}><option value={1}>1 story</option><option value={2}>2 story</option><option value={3}>3 story</option></select></Field>
             <Field label="Roof surface"><select className="input" value={roof} onChange={e=>setRoof(e.target.value)}><option>Shingle</option><option>Tile</option><option>Metal</option></select></Field>
             <Field label="Complexity"><select className="input" value={complexity} onChange={e=>setComplexity(e.target.value)}><option>Mostly straight</option><option>A few peaks</option><option>Complex</option></select></Field>
@@ -134,13 +137,13 @@ export default function App(){
         {tab==="inventory" && <section className="card">
           <div className="eyebrow">Inventory</div><h2>On hand / reserved / available</h2>
           <div className="table-wrap"><table><thead><tr><th>SKU</th><th>On hand</th><th>Reserved</th><th>Available</th><th>This quote</th><th>After quote</th></tr></thead>
-          <tbody>{Object.entries(inventory).map(([key,item]:any)=>{const available=item.on-item.reserved;const after=available-(usage[key]||0);return <tr key={key}><td><b>{item.name}</b></td><td>{item.on.toLocaleString()}</td><td>{item.reserved.toLocaleString()}</td><td>{available.toLocaleString()}</td><td>-{(usage[key]||0).toLocaleString()}</td><td className={item.reorder && after<item.reorder?"warn":""}>{after.toLocaleString()}</td></tr>})}</tbody></table></div>
+          <tbody>{Object.entries(inventory).map(([key,item]:any)=>{const available=item.on-item.reserved;const committed=projectStatus==="Approved"||projectStatus==="Installed";const after=available-(committed?(usage[key]||0):0);return <tr key={key}><td><b>{item.name}</b></td><td>{item.on.toLocaleString()}</td><td>{item.reserved.toLocaleString()}</td><td>{available.toLocaleString()}</td><td>{projectStatus==="Approved"||projectStatus==="Installed"?"-":"~"}{(usage[key]||0).toLocaleString()}</td><td className={item.reorder && after<item.reorder?"warn":""}>{after.toLocaleString()}</td></tr>})}</tbody></table></div>
         </section>}
 
         {tab==="purchasing" && <section className="card">
           <div className="eyebrow">Purchasing</div><h2>Recommended replenishment</h2>
           <div className="stack">
-            {Object.entries(inventory).map(([key,item]:any)=>{const after=item.on-item.reserved-(usage[key]||0);if(!item.reorder||after>=item.reorder)return null;let qty=Math.max(item.reorder*2-after,0);if(key==="minis")qty=Math.ceil(qty/24)*24;if(key.startsWith("c9"))qty=Math.ceil(qty/500)*500;if(key==="clips")qty=Math.ceil(qty/500)*500;return <div className="purchase" key={key}><b>{item.name}</b><div className="muted">Recommended order: {qty.toLocaleString()} • estimated {money(qty*item.cost)}</div></div>})}
+            {Object.entries(inventory).map(([key,item]:any)=>{const committed=projectStatus==="Approved"||projectStatus==="Installed";const after=item.on-item.reserved-(committed?(usage[key]||0):0);if(!item.reorder||after>=item.reorder)return null;let qty=Math.max(item.reorder*2-after,0);if(key==="minis")qty=Math.ceil(qty/24)*24;if(key.startsWith("c9"))qty=Math.ceil(qty/500)*500;if(key==="clips")qty=Math.ceil(qty/500)*500;return <div className="purchase" key={key}><b>{item.name}</b><div className="muted">Recommended order: {qty.toLocaleString()} • estimated {money(qty*item.cost)}</div></div>})}
           </div>
         </section>}
 
@@ -150,14 +153,15 @@ export default function App(){
         </section>}
 
         {tab==="finance" && role==="owner" && <section className="card">
-          <div className="eyebrow">Owner only</div><h2>Profit First view</h2>
+          <div className="eyebrow">Company finance</div><h2>Cash allocation & reserves</h2>
           <div className="metrics">
-            <Metric label="Owner pay 15%" value={money(calc.selling*.15)} />
-            <Metric label="Profit 5%" value={money(calc.selling*.05)} />
-            <Metric label="Tax 10%" value={money(calc.selling*.10)} />
-            <Metric label="OPEX 70%" value={money(calc.selling*.70)} />
+            <Metric label={`Sales Tax ${salesTaxRate.toFixed(1)}%`} value={money(calc.selling*(salesTaxRate/100))} />
+            <Metric label="Owner Compensation 15%" value={money(calc.selling*.15)} />
+            <Metric label="Profit Reserve 5%" value={money(calc.selling*.05)} />
+            <Metric label="Income Tax Reserve 10%" value={money(calc.selling*.10)} />
+            <Metric label="Operating Expenses 70%" value={money(calc.selling*.70)} />
           </div>
-          <div className="note">Weekly Owner Pay target: <b>$1,500</b>. This quote contributes <b>{money(calc.selling*.15)}</b>.</div>
+          <div className="note"><b>Sales tax is segregated before Profit First allocations.</b> Jobber remains the source of truth for the actual job tax rate. <label style={{marginLeft:12}}>Tax rate <input className="input" style={{width:90,display:"inline-block",padding:6}} type="number" step="0.1" min="0" value={salesTaxRate} onChange={e=>setSalesTaxRate(+e.target.value)} /></label><br/><br/>Weekly Owner Compensation target: <b>$1,500</b>. This quote contributes <b>{money(calc.selling*.15)}</b>.</div>
         </section>}
       </main>
     </div>
