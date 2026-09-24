@@ -83,19 +83,19 @@ const complexityRates:Record<string,number>={
   "Very complex / custom":1.5
 };
 const COMPLEXITY_GUIDE=[
-  {key:"Straight / simple",icon:"━",title:"Straight / Simple",note:"Mostly one clean eave/run. No meaningful peaks or returns."},
-  {key:"Light peaks",icon:"⌃",title:"Light Peaks",note:"One small peak or simple change in roof direction."},
-  {key:"Moderate peaks",icon:"⌃⌃",title:"Moderate Peaks",note:"Multiple visible peaks/returns, but still straightforward access."},
-  {key:"Complex",icon:"⌃╱⌃",title:"Complex",note:"Several peaks, offsets, second-story transitions or difficult geometry."},
-  {key:"Very complex / custom",icon:"⌃╱⌃╲",title:"Very Complex",note:"Custom architecture, many transitions, unusual access or detailed layout."}
+  {key:"Straight / simple",title:"Straight / Simple",note:"One clean run with little or no peak work."},
+  {key:"Light peaks",title:"Light Peaks",note:"One simple peak or small roof-direction change."},
+  {key:"Moderate peaks",title:"Moderate Peaks",note:"Several peaks/returns but still straightforward."},
+  {key:"Complex",title:"Complex",note:"Multiple offsets, upper transitions or harder geometry."},
+  {key:"Very complex / custom",title:"Very Complex",note:"Custom architecture or unusually detailed layout."}
 ];
 const REFERENCE_PRESETS=[
-  {key:"garage1",label:"1-car garage door",feet:9,note:"Use when the visible opening clearly matches a standard single-car garage."},
-  {key:"garage2",label:"2-car garage door",feet:16,note:"Use when the visible opening clearly matches a standard double garage."},
-  {key:"door1",label:"Exterior door",feet:3,note:"Standard single exterior door width."},
-  {key:"door2",label:"Double entry door",feet:6,note:"Two standard 3-ft exterior doors."},
-  {key:"window",label:"Common window",feet:3,note:"Use only when the window clearly matches a common 3-ft width; otherwise choose Custom."},
-  {key:"custom",label:"Custom known dimension",feet:0,note:"Use whenever the actual garage, door or window dimension is known or the preset does not clearly fit."}
+  {key:"garage1",label:"1-Car Garage",feet:9,type:"garage1"},
+  {key:"garage2",label:"2-Car Garage",feet:16,type:"garage2"},
+  {key:"door1",label:"Exterior Door",feet:3,type:"door"},
+  {key:"door2",label:"Double Entry",feet:6,type:"doubleDoor"},
+  {key:"window",label:"Window",feet:3,type:"window"},
+  {key:"custom",label:"Custom",feet:0,type:"custom"}
 ];
 
 
@@ -466,7 +466,7 @@ export default function App(){
               <Field label="Roof surface"><select className="input" value={project.roofSurface} onChange={e=>set("roofSurface",e.target.value)}><option>Shingle</option><option>Tile</option><option>Metal</option><option>Mixed / Other</option></select></Field>
               <div className="field complexity-field"><span>Roofline complexity</span>
                 <div className="complexity-grid">{COMPLEXITY_GUIDE.map(item=><button type="button" key={item.key} className={"complexity-option "+(project.complexity===item.key?"selected":"")} onClick={()=>set("complexity",item.key)}>
-                  <i>{item.icon}</i><b>{item.title}</b><small>{item.note}</small>
+                  <RoofSketch kind={item.key}/><b>{item.title}</b><small>{item.note}</small>
                 </button>)}</div>
               </div>
               <Field label="Access" hint="Standard = normal ladder access. Difficult/steep = slower setup or roof movement. Special equipment = lift or unusual access."><select className="input" value={project.access} onChange={e=>set("access",e.target.value)}><option>Standard ladder access</option><option>Difficult / steep</option><option>Special equipment</option></select></Field>
@@ -736,6 +736,31 @@ export default function App(){
 
 type MeasureField = "roofFt"|"ridgeFt"|"groundFt"|"garageFt"|"windowFt"|"bushFt";
 
+function RoofSketch({kind}:{kind:string}){
+  const paths:Record<string,string[]>={
+    "Straight / simple":["M8 40 L92 40"],
+    "Light peaks":["M8 40 L42 40 L55 24 L70 40 L92 40"],
+    "Moderate peaks":["M8 40 L30 40 L42 27 L54 40 L68 40 L77 29 L88 40 L92 40"],
+    "Complex":["M8 42 L25 42 L38 24 L50 42 L58 42 L68 19 L83 42 L92 42"],
+    "Very complex / custom":["M8 43 L18 43 L28 31 L38 43 L48 43 L60 20 L70 35 L78 25 L92 43"]
+  };
+  return <svg className="roof-sketch" viewBox="0 0 100 52" aria-hidden="true">
+    <path d="M8 44 L92 44" className="roof-house-base"/>
+    {(paths[kind]||paths["Straight / simple"]).map((d,i)=><path d={d} key={i} className="roof-line-shape"/>)}
+  </svg>
+}
+
+function ReferenceSketch({type}:{type:string}){
+  return <svg className="reference-sketch" viewBox="0 0 100 62" aria-hidden="true">
+    {type==="garage1"&&<><rect x="26" y="18" width="48" height="34" rx="2"/><path d="M31 26 H69 M31 34 H69 M31 42 H69"/></>}
+    {type==="garage2"&&<><rect x="12" y="18" width="76" height="34" rx="2"/><path d="M18 26 H82 M18 34 H82 M18 42 H82"/><path d="M50 18 V52"/></>}
+    {type==="door"&&<><rect x="35" y="10" width="30" height="44" rx="2"/><circle cx="59" cy="33" r="2"/></>}
+    {type==="doubleDoor"&&<><rect x="25" y="10" width="50" height="44" rx="2"/><path d="M50 10 V54"/><circle cx="46" cy="33" r="1.7"/><circle cx="54" cy="33" r="1.7"/></>}
+    {type==="window"&&<><rect x="28" y="14" width="44" height="36" rx="2"/><path d="M50 14 V50 M28 32 H72"/></>}
+    {type==="custom"&&<><path d="M20 32 H80 M20 26 V38 M80 26 V38"/><text x="50" y="22" textAnchor="middle">?</text></>}
+  </svg>
+}
+
 function PhotoMeasure({project,onApply}:{project:Project;onApply:(key:MeasureField,value:number)=>void}){
   const [imageUrl,setImageUrl]=useState("");
   const [referencePreset,setReferencePreset]=useState("garage1");
@@ -748,12 +773,16 @@ function PhotoMeasure({project,onApply}:{project:Project;onApply:(key:MeasureFie
 
   const refPixels=referencePoints.length===2?distance(referencePoints[0],referencePoints[1]):0;
   const pixelsPerFoot=refPixels>0&&referenceFt>0?refPixels/referenceFt:0;
+  const selectedRef=REFERENCE_PRESETS.find(r=>r.key===referencePreset)||REFERENCE_PRESETS[0];
 
   function upload(e:any){
     const file=e.target.files?.[0]; if(!file)return;
     if(imageUrl)URL.revokeObjectURL(imageUrl);
-    setImageUrl(URL.createObjectURL(file));
-    setReferencePoints([]);setMeasurePoints([]);setLastResult(0);setMode("reference");
+    setImageUrl(URL.createObjectURL(file));setReferencePoints([]);setMeasurePoints([]);setLastResult(0);setMode("reference");
+  }
+  function chooseReference(key:string){
+    const ref=REFERENCE_PRESETS.find(r=>r.key===key);if(!ref)return;
+    setReferencePreset(key);if(ref.feet>0)setReferenceFt(ref.feet);setReferencePoints([]);setMode("reference");
   }
   function clickImage(e:any){
     if(!imageUrl)return;
@@ -767,56 +796,54 @@ function PhotoMeasure({project,onApply}:{project:Project;onApply:(key:MeasureFie
     let px=0;for(let i=1;i<measurePoints.length;i++)px+=distance(measurePoints[i-1],measurePoints[i]);
     setLastResult(px/pixelsPerFoot);
   }
-  function apply(){if(lastResult>0)onApply(target,Math.round(lastResult*10)/10)}
+  function clearMeasure(){setMeasurePoints([]);setLastResult(0)}
+  function apply(){if(lastResult>0){onApply(target,Math.round(lastResult*10)/10);clearMeasure()}}
 
-  return <div className="measure-workspace">
-    <section className="measure-controls">
-      <div className="measure-step"><span>1</span><div><h3>Add photo</h3><p>No customer form. Active project: <b>{project.customer||"Unnamed project"}</b>.</p></div></div>
-      <input className="input" type="file" accept="image/*,.avif" onChange={upload}/>
-      <div className="measure-quick-guide">
-        <b>Quick guide</b>
-        <ol>
-          <li>Use the clearest front/side photo available.</li>
-          <li>Choose the largest reliable reference visible in the same plane as the area being measured.</li>
-          <li>Garage first, then door, then window. Use Custom when the actual dimension is known.</li>
-          <li>Draw each roofline/ridge section once. Clear the measurement before starting a different area.</li>
-          <li>For trees, palms and columns, use dedicated wrap presets/measurements rather than guessing from height alone.</li>
-        </ol>
-      </div>
+  return <div className="measure-clean">
+    <div className="measure-topbar">
+      <label className="photo-upload"><input type="file" accept="image/*,.avif" onChange={upload}/><span>{imageUrl?"Replace Photo":"Add Property Photo"}</span></label>
+      {imageUrl&&<div className="measure-status">{pixelsPerFoot?"Reference set · ready to measure":"Set a reference first"}</div>}
+    </div>
 
-      <div className="measure-step"><span>2</span><div><h3>Choose reference</h3><p>Pick the visible reference that best matches the photo. The app loads the reference width automatically, then you click the two endpoints.</p></div></div>
-      <div className="reference-presets">{REFERENCE_PRESETS.map(ref=><button type="button" key={ref.key} className={referencePreset===ref.key?"selected":""} onClick={()=>{setReferencePreset(ref.key);if(ref.feet>0)setReferenceFt(ref.feet);setReferencePoints([])}}>
-        <b>{ref.label}</b><span>{ref.feet?ref.feet+" ft":"Enter size"}</span><small>{ref.note}</small>
-      </button>)}</div>
-      <div className="form-grid two">
-        <Field label={referencePreset==="custom"?"Custom reference · ft":"Reference width"}><input className="input" type="number" min=".1" step=".1" value={referenceFt} onChange={e=>setReferenceFt(+e.target.value)} /></Field>
-        <Field label="Calibration"><div className={"reference-status "+(pixelsPerFoot?"ready":"")}>{pixelsPerFoot?"Reference ready · draw measurements":"Click Mark reference, then two endpoints"}</div></Field>
-      </div>
-      <button className={mode==="reference"?"primary":""} onClick={()=>setMode("reference")}>Mark reference</button>
+    {!imageUrl?<div className="measure-empty clean-empty"><ReferenceSketch type="garage2"/><b>No photo added</b><span>Add a front, side, or close-up only when photo measurement is needed.</span></div>:
+    <div className="measure-main">
+      <aside className="measure-rail">
+        <div className="rail-section">
+          <span className="rail-step">1</span>
+          <div className="rail-heading"><b>Reference</b><small>Choose what you can clearly see.</small></div>
+          <div className="reference-visual-grid">{REFERENCE_PRESETS.map(ref=><button type="button" key={ref.key} onClick={()=>chooseReference(ref.key)} className={referencePreset===ref.key?"selected":""}>
+            <ReferenceSketch type={ref.type}/><span>{ref.label}</span><small>{ref.feet?ref.feet+" ft":"Known size"}</small>
+          </button>)}</div>
+          {referencePreset==="custom"&&<Field label="Known width · ft"><input className="input" type="number" min=".1" step=".1" value={referenceFt} onChange={e=>setReferenceFt(+e.target.value)}/></Field>}
+          <button className={"rail-action "+(mode==="reference"?"active":"")} onClick={()=>setMode("reference")}>{referencePoints.length===2?"Re-mark Reference":"Mark Reference"}</button>
+        </div>
 
-      <div className="measure-step"><span>3</span><div><h3>Measure</h3><p>Select the project field, then click every turn/corner in sequence.</p></div></div>
-      <Field label="Measurement type"><select className="input" value={target} onChange={e=>setTarget(e.target.value as MeasureField)}>
-        <option value="roofFt">Roofline</option><option value="ridgeFt">Ridgeline</option><option value="groundFt">Ground stake line</option><option value="garageFt">Garage / architectural outline</option><option value="windowFt">Window outline</option><option value="bushFt">Bush / garden</option>
-      </select></Field>
-      <div className="measure-actions"><button className={mode==="measure"?"primary":""} disabled={!pixelsPerFoot} onClick={()=>setMode("measure")}>Draw</button><button disabled={measurePoints.length<2} onClick={finish}>Finish</button><button onClick={()=>{setMeasurePoints([]);setLastResult(0)}}>Clear</button></div>
-      <div className="measure-result"><span>Result</span><strong>{lastResult?lastResult.toFixed(1)+" ft":"—"}</strong><button className="primary" disabled={!lastResult} onClick={apply}>Use in Project</button></div>
+        <div className={"rail-section "+(!pixelsPerFoot?"disabled-section":"")}>
+          <span className="rail-step">2</span>
+          <div className="rail-heading"><b>Measure</b><small>Pick an area and trace it.</small></div>
+          <select className="input" disabled={!pixelsPerFoot} value={target} onChange={e=>setTarget(e.target.value as MeasureField)}>
+            <option value="roofFt">Roofline</option><option value="ridgeFt">Ridgeline</option><option value="groundFt">Ground stake line</option><option value="garageFt">Garage outline</option><option value="windowFt">Window outline</option><option value="bushFt">Bush / garden</option>
+          </select>
+          <button className={"rail-action "+(mode==="measure"?"active":"")} disabled={!pixelsPerFoot} onClick={()=>{setMode("measure");clearMeasure()}}>Start Drawing</button>
+          <div className="measure-mini-actions"><button disabled={measurePoints.length<2} onClick={finish}>Finish</button><button onClick={clearMeasure}>Clear</button></div>
+          {lastResult>0&&<div className="measure-result-simple"><span>{targetLabel(target)}</span><b>{lastResult.toFixed(1)} ft</b><button className="primary" onClick={apply}>Use Measurement</button></div>}
+        </div>
+      </aside>
 
-      <div className="object-measure-note"><h3>Tree, palm & column wraps</h3><p>Those need height plus circumference/side coverage—not just a line length. They belong here as measurement calculators, not inside another customer or estimate screen. Dedicated wrap calculators are the next measurement upgrade.</p></div>
-    </section>
-    <section className="measure-canvas-card">
-      {!imageUrl?<div className="measure-empty"><b>Add a photo only if needed</b><span>Creating a project does not require an initial photo.</span></div>:
-      <div className="measure-image-wrap" onClick={clickImage}>
+      <div className="measure-photo-stage" onClick={clickImage}>
         <img src={imageUrl}/>
         <svg viewBox="0 0 100 100" preserveAspectRatio="none">
           {referencePoints.length>1&&<line x1={referencePoints[0].x} y1={referencePoints[0].y} x2={referencePoints[1].x} y2={referencePoints[1].y} className="ref-line"/>}
-          {referencePoints.map((p,i)=><circle key={"r"+i} cx={p.x} cy={p.y} r=".8" className="ref-point"/>)}
+          {referencePoints.map((p,i)=><circle key={"r"+i} cx={p.x} cy={p.y} r=".7" className="ref-point"/>)}
           {measurePoints.length>1&&<polyline points={measurePoints.map(p=>p.x+","+p.y).join(" ")} className="measure-line"/>}
-          {measurePoints.map((p,i)=><circle key={"m"+i} cx={p.x} cy={p.y} r=".8" className="measure-point"/>)}
+          {measurePoints.map((p,i)=><circle key={"m"+i} cx={p.x} cy={p.y} r=".7" className="measure-point"/>)}
         </svg>
-      </div>}
-    </section>
+        <div className="photo-hint">{mode==="reference"?"Click both edges of the "+selectedRef.label.toLowerCase():pixelsPerFoot?"Click each corner/turn. Finish when complete.":"Set a reference first."}</div>
+      </div>
+    </div>}
   </div>
 }
+function targetLabel(v:MeasureField){return ({roofFt:"Roofline",ridgeFt:"Ridgeline",groundFt:"Ground stakes",garageFt:"Garage outline",windowFt:"Window outline",bushFt:"Bush / garden"} as Record<MeasureField,string>)[v]}
 function distance(a:{x:number;y:number},b:{x:number;y:number}){return Math.hypot(b.x-a.x,b.y-a.y)}
 
 function ProjectGroup({title,tone,projects,onAction}:{title:string;tone:string;projects:Project[];onAction:(p:Project,a:string)=>void}){
