@@ -801,35 +801,65 @@ function applyColor(u:Record<string,number>,color:string,count:number){
   const k=map[color]||"c9Sun";u[k]=(u[k]||0)+count;
 }
 function buildHandoff(p:Project,e:any){
-  if(p.service==="Permanent")return [
-    "PERMANENT LIGHTING",
-    "Coverage: "+p.permanentCoverage,
-    "Measured footage: "+p.permanentFt+" ft",
-    "Expected material: "+p.permanentFt+" ft Minleon permanent lighting",
-    "",
-    "TECH: Record actual installed footage and explain any variance."
-  ].join("\n");
-  return [
-    "C9 ROOFLINE / OUTLINES",
-    "Roofline: "+p.roofFt+" ft",
-    "Garage / architectural outline: "+p.garageFt+" ft",
-    "Window outline: "+p.windowFt+" ft",
-    "Color: "+p.c9Color,
-    "Property: "+p.stories+" story · "+p.roofSurface+" · "+p.complexity+" · "+p.access,
-    "Expected main C9 bulbs: "+e.roofBulbs,
-    "",
-    "RIDGELINE",
-    p.ridgeFt+" ft · expected "+e.ridgeBulbs+" bulbs / ridge clips",
-    "",
-    "GROUND STAKE",
-    p.groundFt+" ft · expected "+e.groundBulbs+" Traditional Warm bulbs / stakes",
-    "",
-    "MINI LIGHTS",
-    ...((p.landscapeItems||[]).length?(p.landscapeItems||[]).map(i=>i.count+" × "+i.preset+" = "+(i.count*i.strandsEach)+" strands"):["Total minis: "+e.miniStrands]),
-    "",
-    "DECOR / ADD-ONS",
-    ...((p.decorItems||[]).length?(p.decorItems||[]).map(i=>i.type==="Wreath"?i.count+" × "+i.preset+" wreath":i.type==="Garland"?i.amount+" ft garland":i.type==="Ground Stakes"?i.amount+" ft ground stakes":i.count+" × "+i.type):["No décor/add-ons"]),
-    "",
-    "TECH: Record actual material used. If actual exceeds or falls below plan, enter the variance and reason before closing the job."
-  ].join("\n");
+  if(p.service==="Permanent"){
+    const lines=[
+      "PROPERTY: "+p.stories+" story · "+p.roofSurface+" · "+p.complexity+" · "+p.access,
+      "COLOR / SYSTEM: Minleon permanent lighting",
+      "",
+      "PERMANENT LIGHTING",
+      "Coverage: "+p.permanentCoverage,
+      "Measured footage: "+p.permanentFt+" ft",
+      "Expected material: "+p.permanentFt+" ft Minleon permanent lighting",
+      "",
+      "TECH: Record actual installed footage and explain any variance."
+    ];
+    return lines.join("\n");
+  }
+
+  const lines:string[]=[
+    "PROPERTY: "+p.stories+" story · "+p.roofSurface+" · "+p.complexity+" · "+p.access,
+    "COLOR: "+p.c9Color
+  ];
+
+  if(p.roofFt>0||p.garageFt>0||p.windowFt>0){
+    lines.push("","C9 ROOFLINE / OUTLINES");
+    if(p.roofFt>0)lines.push("Roofline: "+p.roofFt+" ft");
+    if(p.garageFt>0)lines.push("Garage / architectural outline: "+p.garageFt+" ft");
+    if(p.windowFt>0)lines.push("Window outline: "+p.windowFt+" ft");
+    const mainBulbs=Math.ceil((p.roofFt+p.garageFt+p.windowFt)/1.25);
+    lines.push("Expected materials: "+mainBulbs+" C9 bulbs · "+mainBulbs+" "+(p.roofSurface==="Tile"?"tile clips":p.roofSurface==="Metal"?"magnetic clips":"roof clips")+" · "+qty(p.roofFt+p.garageFt+p.windowFt)+" ft 15-inch socket cord");
+  }
+
+  if(p.ridgeFt>0){
+    lines.push("","RIDGELINE");
+    lines.push(p.ridgeFt+" ft");
+    lines.push("Expected materials: "+e.ridgeBulbs+" C9 bulbs · "+e.ridgeBulbs+" ridge clips · "+p.ridgeFt+" ft 15-inch socket cord");
+  }
+
+  if(p.groundFt>0){
+    lines.push("","GROUND STAKES");
+    lines.push(p.groundFt+" ft");
+    lines.push("Expected materials: "+e.groundBulbs+" Traditional Warm C9 bulbs · "+e.groundBulbs+" ground stakes · "+p.groundFt+" ft 15-inch socket cord");
+  }
+
+  const landscape=p.landscapeItems||[];
+  if(landscape.length){
+    lines.push("","MINI LIGHTS");
+    landscape.forEach(i=>lines.push(i.count+" × "+i.preset+" = "+(i.count*i.strandsEach)+" strands"));
+    const total=landscape.reduce((s,i)=>s+i.count*i.strandsEach,0);
+    lines.push("Expected materials: "+total+" mini-light strands");
+  }
+
+  const decor=(p.decorItems||[]).filter(i=>i.type!=="Ground Stakes");
+  if(decor.length){
+    lines.push("","DECOR / ADD-ONS");
+    decor.forEach(i=>{
+      if(i.type==="Wreath")lines.push(i.count+" × "+i.preset+" wreath");
+      else if(i.type==="Garland")lines.push(i.amount+" ft garland");
+      else lines.push(i.count+" × "+i.type);
+    });
+  }
+
+  lines.push("","TECH: Install only the listed scope. Record actual material used and note any variance before closing the job.");
+  return lines.join("\n");
 }
