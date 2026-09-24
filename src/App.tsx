@@ -131,6 +131,10 @@ export default function App(){
   const [decorPreset,setDecorPreset]=useState("48 in");
   const [decorCount,setDecorCount]=useState(1);
   const [decorAmount,setDecorAmount]=useState(9);
+  const [receiptBusy,setReceiptBusy]=useState(false);
+  const [receiptLines,setReceiptLines]=useState<POLine[]>([]);
+  const [receiptSupplier,setReceiptSupplier]=useState("Receipt Import");
+  const [receiptMessage,setReceiptMessage]=useState("");
 
   useEffect(()=>{localStorage.setItem(STORAGE,JSON.stringify(projects))},[projects]);
   useEffect(()=>{localStorage.setItem(PO_STORAGE,JSON.stringify(purchaseOrders))},[purchaseOrders]);
@@ -324,6 +328,30 @@ export default function App(){
   }
   function deletePO(id:string){setPurchaseOrders(prev=>prev.filter(po=>po.id!==id))}
 
+  async function importReceipt(file:File){
+    setReceiptBusy(true);setReceiptMessage("Reading receipt…");setReceiptLines([]);
+    try{
+      const Tesseract=await import("tesseract.js");
+      const result=await Tesseract.recognize(file,"eng");
+      const text=(result.data.text||"").toLowerCase();
+      const guessed=text.includes("christmas light contractors")||text.includes("clc")?"CLC USA":
+        text.includes("let's get lit")||text.includes("lets get lit")?"LGL":
+        text.includes("s4")?"S4":text.includes("dekra")?"Dekra-Lite":"Receipt Import";
+      setReceiptSupplier(guessed);
+      const parsed=parseReceiptText(text);
+      setReceiptLines(parsed);
+      setReceiptMessage(parsed.length?parsed.length+" inventory lines matched. Review quantities, then receive.":"No inventory SKUs matched automatically. Add the receipt as a PO or enter items manually.");
+    }catch(e){
+      setReceiptMessage("Could not read this receipt image. Try a clearer JPG/PNG or enter the PO manually.");
+    }finally{setReceiptBusy(false)}
+  }
+  function confirmReceipt(){
+    if(receiptLines.length===0)return;
+    const nextNum="RCPT-"+String(purchaseOrders.length+1).padStart(4,"0");
+    const po:PurchaseOrder={id:uid(),poNumber:nextNum,supplier:receiptSupplier,status:"Received",expectedDate:"",notes:"Imported from receipt image",createdAt:new Date().toISOString(),lines:receiptLines.map(l=>({...l,received:l.quantity}))};
+    setPurchaseOrders(prev=>[po,...prev]);setReceiptLines([]);setReceiptMessage("Receipt received into inventory.");
+  }
+
   const handoff=buildHandoff(project,estimate);
 
   return <div className="shell">
@@ -494,7 +522,7 @@ export default function App(){
           <Metric label="SKUs tracked" value={String(Object.keys(INV).length)} tone="green"/>
           <Metric label="Needs reorder" value={String(Object.entries(INV).filter(([k,i])=>i.reorder&&availability(k).projected<i.reorder).length)} tone="orange"/>
           <Metric label="Open purchase orders" value={String(purchaseOrders.filter(po=>["Draft","Ordered","Partially Received"].includes(po.status)).length)} tone="blue"/>
-          <Metric label="Approved jobs reserving stock" value={String(projects.filter(p=>p.status==="Approved").length)} tone="purple"/>
+          <Metric label="Quote-approved jobs reserving stock" value={String(projects.filter(p=>p.status==="Quote Approved").length)} tone="purple"/>
         </div>
 
         <div className="inventory-toolbar">
@@ -545,6 +573,24 @@ export default function App(){
 
       {tab==="purchasing"&&<section className="page">
         <div className="page-head orange-head"><div><span className="eyebrow">Procurement & purchase orders</span><h1>Turn inventory needs into controlled purchasing.</h1><p>Create POs, track what was ordered, receive stock, and let incoming inventory affect purchasing decisions.</p></div></div>
+
+        <section className="receipt-import">
+          <div className="section-title"><span>R</span><div><h2>Receive from Receipt</h2><p>Upload a clear receipt photo. The app reads likely inventory items, lets you verify quantities, then receives them into stock.</p></div></div>
+          <div className="receipt-upload-row">
+            <input className="input" type="file" accept="image/png,image/jpeg,image/webp,image/avif" disabled={receiptBusy} onChange={e=>{const f=e.target.files?.[0];if(f)importReceipt(f)}}/>
+            <span>{receiptBusy?"Reading…":receiptMessage}</span>
+          </div>
+          {receiptLines.length>0&&<div className="receipt-matches">
+            <div className="receipt-supplier"><Field label="Detected supplier"><input className="input" value={receiptSupplier} onChange={e=>setReceiptSupplier(e.target.value)}/></Field></div>
+            {receiptLines.map((line,idx)=><div className="receipt-line" key={line.key}>
+              <span>{INV[line.key]?.name}</span>
+              <input className="input" type="number" min="0" value={line.quantity} onChange={e=>setReceiptLines(lines=>lines.map((l,i)=>i===idx?{...l,quantity:+e.target.value}:l))}/>
+              <span>{INV[line.key]?.unit}</span>
+              <button className="danger-link" onClick={()=>setReceiptLines(lines=>lines.filter((_,i)=>i!==idx))}>Remove</button>
+            </div>)}
+            <button className="primary" onClick={confirmReceipt}>Confirm & Receive Inventory</button>
+          </div>}
+        </section>
 
         <div className="procurement-layout">
           <section className="po-builder">
@@ -682,6 +728,33 @@ function Nav({active,tone,onClick,children}:{active:boolean;tone:string;onClick:
 }
 
 
+function parseReceiptText(text:string):POLine[]{
+  const lines=text.split(/\n+/).map(x=>x.trim()).filter(Boolean);
+  const aliases:Record<string,string[]>={
+    c9Sun:["sun warm","c9 sun","warm white c9"],c9Traditional:["traditional warm"],
+    c9Cool:["cool white"],c9Pure:["pure white"],c9Red:["c9 red","red c9"],c9Green:["c9 green","green c9"],
+    c9Blue:["c9 blue","blue c9"],c9Multi:["multicolor","multi color"],c9Pink:["c9 pink"],c9Yellow:["c9 yellow"],c9Purple:["c9 purple"],
+    c9Cord15:["15 inch socket","15\" socket","15 in socket","c9 socket cord"],
+    c7Sun:["c7 sun warm","c7 warm white"],c7Cord24:["c7 socket","24\" c7"],
+    miniSun:["sun warm mini","warm white mini","50l sun warm"],s4Mini:["nxg","coupling nxg","benchmark coupling"],
+    wreath48:["48\" wreath","48 inch wreath"],garland9:["9ft garland","9 ft garland","prelit garland"],
+    clipShingle:["c9 clip","circle clip"],clipTile:["tile clip"],clipRidge:["ridge clip","peak clip"],
+    stakesCircle:["circle top stake"],timerTouchSmart:["touchsmart"]
+  };
+  const found:Record<string,POLine>={};
+  for(const line of lines){
+    for(const [key,terms] of Object.entries(aliases)){
+      if(terms.some(t=>line.includes(t))){
+        const m=line.match(/(?:qty|quantity|x)\s*[:x-]?\s*(\d+(?:\.\d+)?)/i)||line.match(/^\s*(\d+(?:\.\d+)?)\s+/);
+        const quantity=m?Number(m[1]):1;
+        if(!found[key])found[key]={key,quantity,unitCost:INV[key]?.cost||0,received:0};
+        else found[key].quantity+=quantity;
+      }
+    }
+  }
+  return Object.values(found);
+}
+
 function suggestTaxRate(city:string){
   const v=city.trim().toLowerCase();
   const orange=["orlando","windermere","winter garden","lake nona","winter park","ocoee","apopka"];
@@ -752,17 +825,10 @@ function buildHandoff(p:Project,e:any){
     p.groundFt+" ft · expected "+e.groundBulbs+" Traditional Warm bulbs / stakes",
     "",
     "MINI LIGHTS",
-    "Bushes: "+p.bushFt+" measured ft → "+e.bushStrands+" strands",
-    "Palms: "+p.palmStrands+" strands",
-    "Trees: "+p.treeStrands+" strands",
-    "Columns: "+p.columnStrands+" strands",
-    "Total minis: "+e.miniStrands,
+    ...((p.landscapeItems||[]).length?(p.landscapeItems||[]).map(i=>i.count+" × "+i.preset+" = "+(i.count*i.strandsEach)+" strands"):["Total minis: "+e.miniStrands]),
     "",
-    "DECOR",
-    p.wreathQty+" × "+p.wreathSize+'" wreath',
-    p.garlandFt+" ft garland",
-    p.snowflakes+" window snowflakes",
-    p.treeDrops+" tree hanging drops",
+    "DECOR / ADD-ONS",
+    ...((p.decorItems||[]).length?(p.decorItems||[]).map(i=>i.type==="Wreath"?i.count+" × "+i.preset+" wreath":i.type==="Garland"?i.amount+" ft garland":i.type==="Ground Stakes"?i.amount+" ft ground stakes":i.count+" × "+i.type):["No décor/add-ons"]),
     "",
     "TECH: Record actual material used. If actual exceeds or falls below plan, enter the variance and reason before closing the job."
   ].join("\n");
