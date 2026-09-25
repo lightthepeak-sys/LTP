@@ -813,6 +813,8 @@ function PhotoMeasure({
   const [objectHeightPoints,setObjectHeightPoints]=useState<DrawPoint[]>([]);
   const [objectWidthPoints,setObjectWidthPoints]=useState<DrawPoint[]>([]);
   const [wrapSpacingIn,setWrapSpacingIn]=useState(6);
+  const [hiddenDepthIn,setHiddenDepthIn]=useState(0);
+  const [columnSides,setColumnSides]=useState<1|2|3|4>(4);
   const [bushDepth,setBushDepth]=useState(2);
   const [objectAdded,setObjectAdded]=useState("");
 
@@ -842,22 +844,51 @@ function PhotoMeasure({
   const objectWidth=twoPointFeet(objectWidthPoints);
   const objectDims=(()=>{
     if(!objectHeight||!objectWidth)return null;
-    const circumferenceIn=Math.PI*objectWidth*12;
-    const circumferenceFt=circumferenceIn/12;
+    const widthIn=objectWidth*12;
+    const depthIn=hiddenDepthIn>0?hiddenDepthIn:widthIn;
+
+    let circumferenceIn=0;
+    let perimeterIn=0;
+    let effectiveWrapIn=0;
+
+    if(objectKind==="Palm"||objectKind==="Tree"){
+      // Original-tool behavior: visible width is one diameter; hidden depth supplies the other.
+      // Use an ellipse perimeter when the trunk is not perfectly round.
+      const a=widthIn/2;
+      const b=depthIn/2;
+      const h=Math.pow(a-b,2)/Math.pow(a+b,2);
+      circumferenceIn=Math.PI*(a+b)*(1+(3*h)/(10+Math.sqrt(4-3*h)));
+      effectiveWrapIn=circumferenceIn;
+    }else if(objectKind==="Column"){
+      // Columns/pillars use visible width + hidden side/depth, not circle math.
+      perimeterIn=2*(widthIn+depthIn);
+      if(columnSides===4)effectiveWrapIn=perimeterIn;
+      else if(columnSides===3)effectiveWrapIn=widthIn+2*depthIn;
+      else if(columnSides===2)effectiveWrapIn=widthIn+depthIn;
+      else effectiveWrapIn=widthIn;
+      circumferenceIn=effectiveWrapIn;
+    }
+
     const passSpacingFt=wrapSpacingIn/12;
     const wraps=Math.max(1,Math.ceil(objectHeight/passSpacingFt));
-    const wrapFeet=circumferenceFt*wraps;
+    const wrapFeet=(effectiveWrapIn/12)*wraps;
     const physicalStrands=Math.ceil(wrapFeet/25);
     const densityFloor=objectKind==="Palm"?(wrapSpacingIn===4?5:wrapSpacingIn===6?4:3):
       objectKind==="Tree"?(wrapSpacingIn===4?8:wrapSpacingIn===6?6:5):
       objectKind==="Column"?(wrapSpacingIn===4?4:wrapSpacingIn===6?3:2):1;
     const strands=Math.max(physicalStrands,densityFloor);
+
     const bushSurface=(objectWidth+2*bushDepth)*objectHeight;
     const bushLightFeet=bushSurface/passSpacingFt;
     const bushPhysicalStrands=Math.ceil(bushLightFeet/25);
     const bushSizeFloor=objectHeight<=3&&objectWidth<=3?1:objectHeight<=5&&objectWidth<=5?2:4;
     const bushStrands=Math.max(bushPhysicalStrands,bushSizeFloor);
-    return {height:objectHeight,width:objectWidth,circumferenceIn,circumferenceFt,wraps,wrapFeet,strands,bushSurface,bushLightFeet,bushStrands};
+
+    return {
+      height:objectHeight,width:objectWidth,widthIn,depthIn,
+      circumferenceIn,perimeterIn,effectiveWrapIn,
+      wraps,wrapFeet,strands,bushSurface,bushLightFeet,bushStrands
+    };
   })();
 
   const displayWidth=objectWidth?formatFeetInches(objectWidth):"Not measured";
@@ -900,7 +931,14 @@ function PhotoMeasure({
     if(!pixelsPerFoot)return;
     if(mode==="object"){
       if(objectAxis==="height")setObjectHeightPoints(prev=>prev.length>=2?[p]:[...prev,p]);
-      else setObjectWidthPoints(prev=>prev.length>=2?[p]:[...prev,p]);
+      else setObjectWidthPoints(prev=>{
+        const next=prev.length>=2?[p]:[...prev,p];
+        if(next.length===2&&hiddenDepthIn<=0){
+          const measured=twoPointFeet(next)*12;
+          if(measured>0)setHiddenDepthIn(Number(measured.toFixed(1)));
+        }
+        return next;
+      });
       setObjectAdded("");
       return;
     }
@@ -918,7 +956,7 @@ function PhotoMeasure({
   function clearTarget(){setSections(prev=>prev.filter(s=>s.target!==target));setActivePoints([])}
   function useLineMeasurement(){if(totalFeet>0)onApply(target,Math.round(totalFeet*10)/10)}
   function clearObject(){
-    setObjectHeightPoints([]);setObjectWidthPoints([]);setObjectAdded("");
+    setObjectHeightPoints([]);setObjectWidthPoints([]);setHiddenDepthIn(0);setColumnSides(4);setObjectAdded("");
   }
   function addObjectToEstimate(){
     if(!objectDims)return;
@@ -980,7 +1018,9 @@ function PhotoMeasure({
               <button className={objectAxis==="height"?"active":""} onClick={()=>setObjectAxis("height")}>1 · Measure Height</button>
               <button className={objectAxis==="width"?"active":""} onClick={()=>setObjectAxis("width")}>2 · Measure Width</button>
             </div>
-            <div className="object-instruction">{objectAxis==="height"?"Click the bottom and top of the object.":"Click the left and right edges at the measured area."}</div>
+            <div className="object-instruction">{objectAxis==="height"?"Click the bottom and top of the object.":"Click the left and right visible edges at the wrap area."}</div>
+            {(objectKind==="Palm"||objectKind==="Tree"||objectKind==="Column")&&<Field label={objectKind==="Column"?"Hidden side / depth · inches":"Hidden trunk depth · inches"} hint={objectWidth?"Defaults to measured visible width for a round/square shape. Override when the side/depth is different.":"Measure width first."}><input className="input" type="number" min="0" step=".1" value={hiddenDepthIn||""} onChange={e=>setHiddenDepthIn(+e.target.value)}/></Field>}
+            {objectKind==="Column"&&<Field label="Sides to wrap"><select className="input" value={columnSides} onChange={e=>setColumnSides(+e.target.value as 1|2|3|4)}><option value={4}>4 sides · full wrap</option><option value={3}>3 sides</option><option value={2}>2 sides</option><option value={1}>1 side</option></select></Field>}
             <Field label="Light spacing / density"><select className="input" value={wrapSpacingIn} onChange={e=>setWrapSpacingIn(+e.target.value)}><option value={4}>4 in · tight</option><option value={6}>6 in · standard</option><option value={8}>8 in · loose</option></select></Field>
             {objectKind==="Bush"&&<Field label="Estimated hidden depth · ft"><input className="input" type="number" min=".5" step=".5" value={bushDepth} onChange={e=>setBushDepth(+e.target.value)}/></Field>}
             <div className="object-dimension-status">
@@ -988,7 +1028,13 @@ function PhotoMeasure({
               <div className={objectWidth?"done":""}><span>Width</span><b>{displayWidth}</b></div>
             </div>
             {objectDims?<div className="object-results">
-              {objectKind!=="Bush"?<><div><span>Circumference</span><b>{objectDims.circumferenceIn.toFixed(1)} in</b></div><div><span>Estimated wrap</span><b>{objectDims.wrapFeet.toFixed(0)} ft</b></div><div className="strand-recommendation"><span>Recommended strands</span><b>{objectDims.strands}</b></div></>:<><div><span>Approx. covered surface</span><b>{objectDims.bushSurface.toFixed(1)} sq ft</b></div><div><span>Estimated light footage</span><b>{objectDims.bushLightFeet.toFixed(0)} ft</b></div><div className="strand-recommendation"><span>Recommended strands</span><b>{objectDims.bushStrands}</b></div></>}
+              {objectKind!=="Bush"?<>
+                <div><span>Visible width</span><b>{objectDims.widthIn.toFixed(1)} in</b></div>
+                <div><span>{objectKind==="Column"?"Side / depth":"Hidden depth"}</span><b>{objectDims.depthIn.toFixed(1)} in</b></div>
+                <div><span>{objectKind==="Column"?"Wrap perimeter":"Circumference"}</span><b>{objectDims.circumferenceIn.toFixed(1)} in</b></div>
+                <div><span>Estimated wrap</span><b>{objectDims.wrapFeet.toFixed(0)} ft</b></div>
+                <div className="strand-recommendation"><span>Recommended strands</span><b>{objectDims.strands}</b></div>
+              </>:<><div><span>Approx. covered surface</span><b>{objectDims.bushSurface.toFixed(1)} sq ft</b></div><div><span>Estimated light footage</span><b>{objectDims.bushLightFeet.toFixed(0)} ft</b></div><div className="strand-recommendation"><span>Recommended strands</span><b>{objectDims.bushStrands}</b></div></>}
             </div>:<div className="quiet-empty">Measure both height and width.</div>}
             <div className="object-actions"><button onClick={clearObject}>Clear Object</button><button className="primary" disabled={!objectDims} onClick={addObjectToEstimate}>Add to Estimate</button></div>
             {objectAdded&&<div className="object-added">{objectAdded}</div>}
