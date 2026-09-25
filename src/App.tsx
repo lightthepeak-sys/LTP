@@ -352,7 +352,7 @@ export default function App(){
 
   function addC9Item(){
     if(c9Feet<=0)return;
-    const defaultRate=c9Area==="Garden Bed / Ground"?4:c9Area==="Ridgeline"?Math.min(12,Math.max(8,c9Rate+.5)):c9Rate;
+    const defaultRate=c9SuggestedRate(c9Area,c9Rate);
     const item:C9Item={id:uid(),area:c9Area,feet:c9Feet,rate:defaultRate,color:project.c9Color,discountPct:c9Discount};
     setProject(p=>({...p,c9Items:[...(p.c9Items||[]),item],updatedAt:new Date().toISOString()}));
     setC9Feet(0);setC9Discount(0);
@@ -551,39 +551,51 @@ export default function App(){
           </>}
 
           {step===2&&project.service==="Christmas"&&<>
-            <div className="section-title"><span>2</span><div><h2>Lighting & Landscape</h2><p>Build the actual scope. Everything is optional except what the customer is buying.</p></div></div>
+            <div className="section-title"><span>2</span><div><h2>Lighting & Landscape</h2><p>Add only the lighting areas and landscape items included in this estimate. Every line stays editable.</p></div></div>
+
             <section className="scope-block">
-              <div className="scope-block-head"><h3>C9 Lighting</h3><button className="measure-link compact" onClick={()=>setTab("measure")}>Use Measurements</button></div>
-              <div className="form-grid three">
-                <Field label="Roofline · ft"><input className="input" type="number" min="0" value={project.roofFt} onChange={e=>set("roofFt",+e.target.value)}/></Field>
-                <Field label="Selling rate · $/ft" hint={"Suggested "+money(estimate.suggestedRoofRate)+"/ft"}><input className="input" type="number" min="0" step=".25" value={project.roofRate} onChange={e=>set("roofRate",+e.target.value)}/></Field>
+              <div className="scope-block-head"><div><h3>C9 Lighting</h3><p>Roofline, ridge, garden bed, garage and windows all use the same add-item workflow.</p></div><button className="measure-link compact" onClick={()=>setTab("measure")}>Use Measurements</button></div>
+              <div className="quote-add-grid c9-add-grid">
+                <Field label="Area"><select className="input" value={c9Area} onChange={e=>{const area=e.target.value as C9Area;setC9Area(area);setC9Rate(c9SuggestedRate(area,estimate.suggestedRoofRate||8))}}><option>Roofline</option><option>Ridgeline</option><option>Garden Bed / Ground</option><option>Garage / Architecture</option><option>Window Outline</option></select></Field>
+                <Field label="Footage"><input className="input" type="number" min="0" value={c9Feet||""} onChange={e=>setC9Feet(+e.target.value)}/></Field>
+                <Field label="Rate · $/ft"><input className="input" type="number" min="0" step=".25" value={c9Rate} onChange={e=>setC9Rate(+e.target.value)}/></Field>
+                <Field label="Discount %"><input className="input" type="number" min="0" max="100" value={c9Discount} onChange={e=>setC9Discount(+e.target.value)}/></Field>
                 <Field label="Color / pattern"><select className="input" value={project.c9Color} onChange={e=>set("c9Color",e.target.value)}>{["Sun Warm White","Pure White","Cool White","Red","Green","Red / Green","Multicolor","Blue","Pink","Purple","Yellow"].map(x=><option key={x}>{x}</option>)}</select></Field>
+                <button className="primary quote-add-button" onClick={addC9Item}>Add C9 Area</button>
               </div>
-              <details className="optional-scope">
-                <summary>+ Add another C9 area</summary>
-                <div className="form-grid three">
-                  <Field label="Ridgeline · ft"><input className="input" type="number" min="0" value={project.ridgeFt} onChange={e=>set("ridgeFt",+e.target.value)}/></Field>
-                  <Field label="Garden bed / ground C9 · ft"><input className="input" type="number" min="0" value={project.groundFt} onChange={e=>set("groundFt",+e.target.value)}/></Field>
-                  <Field label="Garage / architecture · ft"><input className="input" type="number" min="0" value={project.garageFt} onChange={e=>set("garageFt",+e.target.value)}/></Field>
-                  <Field label="Window outline · ft"><input className="input" type="number" min="0" value={project.windowFt} onChange={e=>set("windowFt",+e.target.value)}/></Field>
-                </div>
-              </details>
+              {(project.c9Items||[]).length===0?<div className="quiet-empty compact-empty">No C9 areas added yet.</div>:<div className="quote-line-list">
+                {(project.c9Items||[]).map(item=><article className="quote-line" key={item.id}>
+                  <div className="quote-line-name"><small>C9</small><b>{item.area}</b><span>{item.color}</span></div>
+                  <Field label="Feet"><input className="input" type="number" min="0" value={item.feet} onChange={e=>updateC9Item(item.id,{feet:+e.target.value})}/></Field>
+                  <Field label="$/ft"><input className="input" type="number" min="0" step=".25" value={item.rate} onChange={e=>updateC9Item(item.id,{rate:+e.target.value})}/></Field>
+                  <Field label="Discount %"><input className="input" type="number" min="0" max="100" value={item.discountPct||0} onChange={e=>updateC9Item(item.id,{discountPct:+e.target.value})}/></Field>
+                  <div className="quote-line-total"><span>Line total</span><b>{money(lineTotal(item.feet,item.rate,item.discountPct||0))}</b></div>
+                  <button className="icon-remove" aria-label="Remove" onClick={()=>removeC9Item(item.id)}>×</button>
+                </article>)}
+              </div>}
             </section>
 
             <section className="scope-block">
-              <div className="scope-block-head"><div><h3>Landscape Mini Lights</h3><p>Choose the object first, then its size.</p></div></div>
-              <div className="landscape-builder">
+              <div className="scope-block-head"><div><h3>Landscape Mini Lights</h3><p>Presets are starting recommendations only. Strand count, quantity, price and discount remain editable.</p></div></div>
+              <div className="quote-add-grid landscape-add-grid">
                 <Field label="Object"><select className="input" value={landscapeType} onChange={e=>{const t=e.target.value as LandscapeItem["type"];setLandscapeType(t);setLandscapePreset(defaultLandscapePreset(t))}}><option>Palm</option><option>Tree</option><option>Bush</option><option>Column</option></select></Field>
                 <Field label="Size"><select className="input" value={landscapePreset} onChange={e=>setLandscapePreset(e.target.value)}>{landscapePresetsFor(landscapeType).map(x=><option key={x} value={x}>{landscapeSizeLabel(x)}</option>)}</select></Field>
                 <Field label="Qty"><input className="input" type="number" min="1" value={landscapeCount} onChange={e=>setLandscapeCount(+e.target.value)}/></Field>
-                <button className="primary" onClick={addLandscape}>Add</button>
+                <div className="preset-preview"><span>Starting strands</span><b>{LANDSCAPE_PRESETS[landscapePreset]?.strands||0} each</b></div>
+                <button className="primary quote-add-button" onClick={addLandscape}>Add Landscape Item</button>
               </div>
               <div className="size-reference">{landscapeSizeReference(landscapePreset)}</div>
-              {(project.landscapeItems||[]).length>0&&<div className="selected-items">{(project.landscapeItems||[]).map(item=><article className="selected-item compact-selected" key={item.id}>
-                <div><small>{item.type}</small><h3>{item.preset}</h3></div>
-                <span>{item.count} × {item.strandsEach} strands</span><b>{item.count*item.strandsEach} total</b>
-                <button className="danger-link" onClick={()=>removeLandscape(item.id)}>Remove</button>
-              </article>)}</div>}
+              {(project.landscapeItems||[]).length===0?<div className="quiet-empty compact-empty">No landscape mini lights added.</div>:<div className="quote-line-list">
+                {(project.landscapeItems||[]).map(item=><article className="quote-line landscape-line" key={item.id}>
+                  <div className="quote-line-name"><small>{item.type}</small><b>{item.preset}</b><span>{item.count} item{item.count===1?"":"s"}</span></div>
+                  <Field label="Qty"><input className="input" type="number" min="1" value={item.count} onChange={e=>updateLandscape(item.id,{count:+e.target.value})}/></Field>
+                  <Field label="Strands each"><input className="input" type="number" min="0" value={item.strandsEach} onChange={e=>updateLandscape(item.id,{strandsEach:+e.target.value,priceEach:(+e.target.value)*35})}/></Field>
+                  <Field label="Price each"><input className="input" type="number" min="0" step="1" value={item.priceEach??item.strandsEach*35} onChange={e=>updateLandscape(item.id,{priceEach:+e.target.value})}/></Field>
+                  <Field label="Discount %"><input className="input" type="number" min="0" max="100" value={item.discountPct||0} onChange={e=>updateLandscape(item.id,{discountPct:+e.target.value})}/></Field>
+                  <div className="quote-line-total"><span>{item.count*item.strandsEach} strands total</span><b>{money(lineTotal(item.count,item.priceEach??item.strandsEach*35,item.discountPct||0))}</b></div>
+                  <button className="icon-remove" aria-label="Remove" onClick={()=>removeLandscape(item.id)}>×</button>
+                </article>)}
+              </div>}
             </section>
           </>}
 
@@ -601,19 +613,35 @@ export default function App(){
           </>}
 
           {step===3&&project.service==="Christmas"&&<>
-            <div className="section-title"><span>3</span><div><h2>Décor & Add-ons</h2><p>Add only what is actually included. Leave this blank for a lighting-only project.</p></div></div>
-            <div className="add-item-row decor-add-row">
-              <Field label="Add-on"><select className="input" value={decorType} onChange={e=>{const t=e.target.value as DecorItem["type"];setDecorType(t);if(t==="Wreath")setDecorPreset("48 in");if(t==="Garland")setDecorAmount(9);if(t==="Ground Stakes")setDecorAmount(25)}}><option>Wreath</option><option>Garland</option><option>Snowflake</option><option>Teardrop</option><option>Ground Stakes</option></select></Field>
-              {decorType==="Wreath"&&<Field label="Size"><select className="input" value={decorPreset} onChange={e=>setDecorPreset(e.target.value)}><option>36 in</option><option>48 in</option><option>60 in</option></select></Field>}
-              {(decorType==="Garland"||decorType==="Ground Stakes")&&<Field label="Length · ft"><input className="input" type="number" min="0" value={decorAmount} onChange={e=>setDecorAmount(+e.target.value)}/></Field>}
-              {!(decorType==="Garland"||decorType==="Ground Stakes")&&<Field label="Quantity"><input className="input" type="number" min="1" value={decorCount} onChange={e=>setDecorCount(+e.target.value)}/></Field>}
-              <button className="primary" onClick={addDecor}>Add</button>
+            <div className="section-title"><span>3</span><div><h2>Décor & Add-ons</h2><p>Add only what is included. Every added item shows price, discount and line total.</p></div></div>
+            <div className="quote-add-grid decor-builder">
+              <Field label="Add-on"><select className="input" value={decorType} onChange={e=>{
+                const t=e.target.value as DecorItem["type"];setDecorType(t);
+                const preset=t==="Wreath"?"48 in":"";
+                if(t==="Wreath")setDecorPreset("48 in");
+                if(t==="Garland")setDecorAmount(9);
+                if(t==="Ground Stakes")setDecorAmount(25);
+                setDecorPrice(decorDefaultPrice(t,preset));
+              }}><option>Wreath</option><option>Garland</option><option>Snowflake</option><option>Teardrop</option><option>Ground Stakes</option></select></Field>
+              {decorType==="Wreath"&&<Field label="Size"><select className="input" value={decorPreset} onChange={e=>{const p=e.target.value;setDecorPreset(p);setDecorPrice(decorDefaultPrice("Wreath",p))}}><option>36 in</option><option>48 in</option><option>60 in</option></select></Field>}
+              {(decorType==="Garland"||decorType==="Ground Stakes")?<Field label="Length · ft"><input className="input" type="number" min="0" value={decorAmount} onChange={e=>setDecorAmount(+e.target.value)}/></Field>:<Field label="Quantity"><input className="input" type="number" min="1" value={decorCount} onChange={e=>setDecorCount(+e.target.value)}/></Field>}
+              <Field label={decorType==="Garland"||decorType==="Ground Stakes"?"Price · $/ft":"Price each"}><input className="input" type="number" min="0" step="1" value={decorPrice} onChange={e=>setDecorPrice(+e.target.value)}/></Field>
+              <Field label="Discount %"><input className="input" type="number" min="0" max="100" value={decorDiscount} onChange={e=>setDecorDiscount(+e.target.value)}/></Field>
+              <button className="primary quote-add-button" onClick={addDecor}>Add Item</button>
             </div>
-            {(project.decorItems||[]).length===0?<div className="quiet-empty">No décor or add-ons added.</div>:<div className="selected-items">{(project.decorItems||[]).map(item=><article className="selected-item decor-item" key={item.id}>
-              <div><small>{item.type}</small><h3>{item.type==="Wreath"?item.preset:item.type}</h3></div>
-              <b>{item.type==="Garland"||item.type==="Ground Stakes"?item.amount+" ft":item.count+" ×"}</b>
-              <button className="danger-link" onClick={()=>removeDecor(item.id)}>Remove</button>
-            </article>)}</div>}
+            {(project.decorItems||[]).length===0?<div className="quiet-empty">No décor or add-ons added.</div>:<div className="quote-line-list">
+              {(project.decorItems||[]).map(item=>{
+                const units=item.type==="Garland"||item.type==="Ground Stakes"?item.amount:item.count;
+                return <article className="quote-line decor-line" key={item.id}>
+                  <div className="quote-line-name"><small>{item.type}</small><b>{item.type==="Wreath"?item.preset:item.type}</b><span>{item.type==="Garland"||item.type==="Ground Stakes"?item.amount+" ft":item.count+" item"+(item.count===1?"":"s")}</span></div>
+                  <Field label={item.type==="Garland"||item.type==="Ground Stakes"?"Length · ft":"Qty"}><input className="input" type="number" min="0" value={units} onChange={e=>updateDecor(item.id,item.type==="Garland"||item.type==="Ground Stakes"?{amount:+e.target.value}:{count:+e.target.value})}/></Field>
+                  <Field label={item.type==="Garland"||item.type==="Ground Stakes"?"$/ft":"Price each"}><input className="input" type="number" min="0" value={item.priceEach||0} onChange={e=>updateDecor(item.id,{priceEach:+e.target.value})}/></Field>
+                  <Field label="Discount %"><input className="input" type="number" min="0" max="100" value={item.discountPct||0} onChange={e=>updateDecor(item.id,{discountPct:+e.target.value})}/></Field>
+                  <div className="quote-line-total"><span>Line total</span><b>{money(lineTotal(units,item.priceEach||0,item.discountPct||0))}</b></div>
+                  <button className="icon-remove" aria-label="Remove" onClick={()=>removeDecor(item.id)}>×</button>
+                </article>
+              })}
+            </div>}
           </>}
 
           {((project.service==="Christmas"&&step===4)||(project.service==="Permanent"&&step===3))&&<>
@@ -635,7 +663,6 @@ export default function App(){
               <div className="inline-jobber-head"><div><span className="eyebrow">Jobber note</span><h3>Scope-aware install note</h3></div><button onClick={()=>navigator.clipboard.writeText(handoff)}>Copy note</button></div>
               <textarea className="handoff compact" readOnly value={handoff} rows={14}/>
             </div>
-            <div className="review-actions"><button className="primary" onClick={()=>saveProject(true)}>{savedFlash||"Save Project"}</button></div>
           </>}
 
           <div className="wizard-actions">
@@ -1226,6 +1253,15 @@ function landscapeSizeReference(preset:string){
   };
   return refs[preset]||"";
 }
+
+function c9SuggestedRate(area:C9Area,base:number){return area==="Garden Bed / Ground"?4:area==="Ridgeline"?Math.min(12,Math.max(8,base+.5)):base}
+function decorDefaultPrice(type:DecorItem["type"],preset:string){
+  if(type==="Wreath")return preset==="36 in"?200:preset==="48 in"?300:600;
+  if(type==="Garland")return 22;
+  if(type==="Ground Stakes")return 4;
+  return 0;
+}
+function lineTotal(qty:number,price:number,discount=0){return qty*price*(1-Math.max(0,Math.min(100,discount))/100)}
 
 const LANDSCAPE_PRESETS:Record<string,{type:LandscapeItem["type"];strands:number}> = {
   "Small Palm":{type:"Palm",strands:4},"Standard Palm":{type:"Palm",strands:10},"Large Palm":{type:"Palm",strands:16},
