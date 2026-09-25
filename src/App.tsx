@@ -5,7 +5,9 @@ type Status = "Estimate Sent" | "Quote Approved" | "Quote Not Approved";
 type LandscapeItem = { id:string; type:"Palm"|"Tree"|"Bush"|"Column"; preset:string; count:number; strandsEach:number; priceEach?:number; discountPct?:number };
 type DecorItem = { id:string; type:"Wreath"|"Garland"|"Snowflake"|"Teardrop"|"Ground Stakes"; preset:string; count:number; amount:number; priceEach?:number; discountPct?:number };
 type C9Area = "Roofline"|"Ridgeline"|"Garden Bed / Ground"|"Garage / Architecture"|"Window Outline";
-type C9Item = { id:string; area:C9Area; feet:number; rate:number; color:string; discountPct:number };
+type C9Item = { id:string; area:C9Area; feet:number; rate:number; color:string; discountPct:number; measurementSource?:string; measurementConfidence?:string };
+type MeasurementRecord = { id:string; label:string; value:number; unit:string; source:"Photo reference"|"Manual"|"Google Earth"|"Field verified"; confidence:"High"|"Medium"|"Needs verification"; reference?:string; createdAt:string };
+type ActualUsage = Record<string,number>;
 type Tab = "new" | "quote" | "measure" | "projects" | "inventory" | "purchasing";
 type POStatus = "Draft" | "Ordered" | "Partially Received" | "Received" | "Cancelled";
 type POLine = { key:string; quantity:number; unitCost:number; received:number };
@@ -21,7 +23,7 @@ type Project = {
   bushFt:number; bushStrandsOverride:number; palmStrands:number; treeStrands:number; columnStrands:number;
   wreathSize:number; wreathQty:number; garlandFt:number; snowflakes:number; treeDrops:number;
   roofRate:number; permanentFt:number; permanentCoverage:string; permanentRate:number; permanentFrontFt:number; permanentFrontSidesFt:number; permanentAllAroundFt:number;
-  c9Items?:C9Item[]; landscapeItems?:LandscapeItem[]; decorItems?:DecorItem[]; quoteComplete?:boolean; draftStep?:number;
+  c9Items?:C9Item[]; landscapeItems?:LandscapeItem[]; decorItems?:DecorItem[]; measurements?:MeasurementRecord[]; actualUsage?:ActualUsage; closeoutComplete?:boolean; closeoutNotes?:string; quoteComplete?:boolean; draftStep?:number;
 };
 
 const STORAGE="ltp-projects-v2";
@@ -109,7 +111,7 @@ const emptyProject=():Project=>({
   stories:1,roofSurface:"Shingle",complexity:"Straight / simple",access:"Standard ladder access",
   bushFt:0,bushStrandsOverride:0,palmStrands:0,treeStrands:0,columnStrands:0,
   wreathSize:48,wreathQty:0,garlandFt:0,snowflakes:0,treeDrops:0,
-  roofRate:8,permanentFt:0,permanentCoverage:"Front Only",permanentRate:35,permanentFrontFt:0,permanentFrontSidesFt:0,permanentAllAroundFt:0,c9Items:[],landscapeItems:[],decorItems:[],quoteComplete:false,draftStep:0
+  roofRate:8,permanentFt:0,permanentCoverage:"Front Only",permanentRate:35,permanentFrontFt:0,permanentFrontSidesFt:0,permanentAllAroundFt:0,c9Items:[],landscapeItems:[],decorItems:[],measurements:[],actualUsage:{},closeoutComplete:false,closeoutNotes:"",quoteComplete:false,draftStep:0
 });
 
 function loadProjects():Project[]{
@@ -287,10 +289,13 @@ export default function App(){
   const committed=useMemo(()=>{
     const reserved:Record<string,number>={},consumed:Record<string,number>={};
     projects.forEach(p=>{
-      const u=projectUsage(p);
-      const bucket=p.status==="Quote Approved"?reserved:null;
-      if(!bucket)return;
-      Object.entries(u).forEach(([k,v])=>bucket[k]=(bucket[k]||0)+v);
+      if(p.status!=="Quote Approved")return;
+      if(p.closeoutComplete){
+        Object.entries(p.actualUsage||{}).forEach(([k,v])=>consumed[k]=(consumed[k]||0)+(Number(v)||0));
+      }else{
+        const u=projectUsage(p);
+        Object.entries(u).forEach(([k,v])=>reserved[k]=(reserved[k]||0)+v);
+      }
     });
     return {reserved,consumed};
   },[projects]);
@@ -350,6 +355,16 @@ export default function App(){
   function openProject(p:Project){setProject(p);setStep(1);setTab("quote")}
   function deleteProject(id:string){setProjects(p=>p.filter(x=>x.id!==id));if(project.id===id)newProject()}
 
+  function recordMeasurement(label:string,value:number,unit:string,source:MeasurementRecord["source"]="Photo reference",confidence:MeasurementRecord["confidence"]="Medium",reference?:string){
+    const rec:MeasurementRecord={id:uid(),label,value,unit,source,confidence,reference,createdAt:new Date().toISOString()};
+    setProject(p=>({...p,measurements:[...(p.measurements||[]),rec],updatedAt:new Date().toISOString()}));
+  }
+  function addMeasuredC9(area:C9Area,feet:number,source:string,confidence:string){
+    if(feet<=0)return;
+    const rate=c9SuggestedRate(area,estimate.suggestedRoofRate||8);
+    const item:C9Item={id:uid(),area,feet:Math.round(feet*10)/10,rate,color:project.c9Color,discountPct:0,measurementSource:source,measurementConfidence:confidence};
+    setProject(p=>({...p,c9Items:[...(p.c9Items||[]),item],measurements:[...(p.measurements||[]),{id:uid(),label:area,value:Math.round(feet*10)/10,unit:"ft",source:"Photo reference",confidence:confidence as MeasurementRecord["confidence"],reference:source,createdAt:new Date().toISOString()}],updatedAt:new Date().toISOString()}));
+  }
   function addC9Item(){
     if(c9Feet<=0)return;
     const defaultRate=c9SuggestedRate(c9Area,c9Rate);
@@ -441,6 +456,17 @@ export default function App(){
     const nextNum="RCPT-"+String(purchaseOrders.length+1).padStart(4,"0");
     const po:PurchaseOrder={id:uid(),poNumber:nextNum,supplier:receiptSupplier,status:"Received",expectedDate:"",notes:"Imported from receipt image",createdAt:new Date().toISOString(),lines:receiptLines.map(l=>({...l,received:l.quantity}))};
     setPurchaseOrders(prev=>[po,...prev]);setReceiptLines([]);setReceiptMessage("Receipt received into inventory.");
+  }
+
+  function saveCloseout(p:Project,actual:ActualUsage,notes:string){
+    const next={...p,actualUsage:actual,closeoutNotes:notes,closeoutComplete:true,updatedAt:new Date().toISOString()};
+    setProjects(prev=>prev.map(x=>x.id===p.id?next:x));
+    if(project.id===p.id)setProject(next);
+  }
+  function reopenCloseout(p:Project){
+    const next={...p,closeoutComplete:false,updatedAt:new Date().toISOString()};
+    setProjects(prev=>prev.map(x=>x.id===p.id?next:x));
+    if(project.id===p.id)setProject(next);
   }
 
   function projectAction(p:Project,action:string){
