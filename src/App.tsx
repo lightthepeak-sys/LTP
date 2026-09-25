@@ -2,8 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 
 type Service = "Christmas" | "Permanent";
 type Status = "Estimate Sent" | "Quote Approved" | "Quote Not Approved";
-type LandscapeItem = { id:string; type:"Palm"|"Tree"|"Bush"|"Column"; preset:string; count:number; strandsEach:number };
-type DecorItem = { id:string; type:"Wreath"|"Garland"|"Snowflake"|"Teardrop"|"Ground Stakes"; preset:string; count:number; amount:number };
+type LandscapeItem = { id:string; type:"Palm"|"Tree"|"Bush"|"Column"; preset:string; count:number; strandsEach:number; priceEach?:number; discountPct?:number };
+type DecorItem = { id:string; type:"Wreath"|"Garland"|"Snowflake"|"Teardrop"|"Ground Stakes"; preset:string; count:number; amount:number; priceEach?:number; discountPct?:number };
+type C9Area = "Roofline"|"Ridgeline"|"Garden Bed / Ground"|"Garage / Architecture"|"Window Outline";
+type C9Item = { id:string; area:C9Area; feet:number; rate:number; color:string; discountPct:number };
 type Tab = "new" | "quote" | "measure" | "projects" | "inventory" | "purchasing";
 type POStatus = "Draft" | "Ordered" | "Partially Received" | "Received" | "Cancelled";
 type POLine = { key:string; quantity:number; unitCost:number; received:number };
@@ -19,7 +21,7 @@ type Project = {
   bushFt:number; bushStrandsOverride:number; palmStrands:number; treeStrands:number; columnStrands:number;
   wreathSize:number; wreathQty:number; garlandFt:number; snowflakes:number; treeDrops:number;
   roofRate:number; permanentFt:number; permanentCoverage:string; permanentRate:number; permanentFrontFt:number; permanentFrontSidesFt:number; permanentAllAroundFt:number;
-  landscapeItems?:LandscapeItem[]; decorItems?:DecorItem[]; quoteComplete?:boolean; draftStep?:number;
+  c9Items?:C9Item[]; landscapeItems?:LandscapeItem[]; decorItems?:DecorItem[]; quoteComplete?:boolean; draftStep?:number;
 };
 
 const STORAGE="ltp-projects-v2";
@@ -107,7 +109,7 @@ const emptyProject=():Project=>({
   stories:1,roofSurface:"Shingle",complexity:"Straight / simple",access:"Standard ladder access",
   bushFt:0,bushStrandsOverride:0,palmStrands:0,treeStrands:0,columnStrands:0,
   wreathSize:48,wreathQty:0,garlandFt:0,snowflakes:0,treeDrops:0,
-  roofRate:8,permanentFt:0,permanentCoverage:"Front Only",permanentRate:35,permanentFrontFt:0,permanentFrontSidesFt:0,permanentAllAroundFt:0,landscapeItems:[],decorItems:[],quoteComplete:false,draftStep:0
+  roofRate:8,permanentFt:0,permanentCoverage:"Front Only",permanentRate:35,permanentFrontFt:0,permanentFrontSidesFt:0,permanentAllAroundFt:0,c9Items:[],landscapeItems:[],decorItems:[],quoteComplete:false,draftStep:0
 });
 
 function loadProjects():Project[]{
@@ -143,6 +145,10 @@ export default function App(){
   const [poLineKey,setPoLineKey]=useState("c9Sun");
   const [poLineQty,setPoLineQty]=useState(500);
   const [poLines,setPoLines]=useState<POLine[]>([]);
+  const [c9Area,setC9Area]=useState<C9Area>("Roofline");
+  const [c9Feet,setC9Feet]=useState(0);
+  const [c9Rate,setC9Rate]=useState(8);
+  const [c9Discount,setC9Discount]=useState(0);
   const [landscapeType,setLandscapeType]=useState<LandscapeItem["type"]>("Palm");
   const [landscapePreset,setLandscapePreset]=useState("Small Palm");
   const [landscapeCount,setLandscapeCount]=useState(1);
@@ -150,6 +156,8 @@ export default function App(){
   const [decorPreset,setDecorPreset]=useState("48 in");
   const [decorCount,setDecorCount]=useState(1);
   const [decorAmount,setDecorAmount]=useState(9);
+  const [decorPrice,setDecorPrice]=useState(300);
+  const [decorDiscount,setDecorDiscount]=useState(0);
   const [receiptBusy,setReceiptBusy]=useState(false);
   const [receiptLines,setReceiptLines]=useState<POLine[]>([]);
   const [receiptSupplier,setReceiptSupplier]=useState("Receipt Import");
@@ -310,9 +318,25 @@ export default function App(){
   function openProject(p:Project){setProject(p);setStep(1);setTab("quote")}
   function deleteProject(id:string){setProjects(p=>p.filter(x=>x.id!==id));if(project.id===id)newProject()}
 
+  function addC9Item(){
+    if(c9Feet<=0)return;
+    const defaultRate=c9Area==="Garden Bed / Ground"?4:c9Area==="Ridgeline"?Math.min(12,Math.max(8,c9Rate+.5)):c9Rate;
+    const item:C9Item={id:uid(),area:c9Area,feet:c9Feet,rate:defaultRate,color:project.c9Color,discountPct:c9Discount};
+    setProject(p=>({...p,c9Items:[...(p.c9Items||[]),item],updatedAt:new Date().toISOString()}));
+    setC9Feet(0);setC9Discount(0);
+  }
+  function updateC9Item(id:string,patch:Partial<C9Item>){
+    setProject(p=>({...p,c9Items:(p.c9Items||[]).map(i=>i.id===id?{...i,...patch}:i),updatedAt:new Date().toISOString()}));
+  }
+  function removeC9Item(id:string){
+    setProject(p=>({...p,c9Items:(p.c9Items||[]).filter(i=>i.id!==id),updatedAt:new Date().toISOString()}));
+  }
+  function updateDecor(id:string,patch:Partial<DecorItem>){
+    setProject(p=>({...p,decorItems:(p.decorItems||[]).map(i=>i.id===id?{...i,...patch}:i),updatedAt:new Date().toISOString()}));
+  }
   function addLandscape(){
     const preset=LANDSCAPE_PRESETS[landscapePreset]; if(!preset||landscapeCount<=0)return;
-    const item:LandscapeItem={id:uid(),type:landscapeType,preset:landscapePreset,count:landscapeCount,strandsEach:preset.strands};
+    const item:LandscapeItem={id:uid(),type:landscapeType,preset:landscapePreset,count:landscapeCount,strandsEach:preset.strands,priceEach:preset.strands*35,discountPct:0};
     setProject(p=>({...p,landscapeItems:[...(p.landscapeItems||[]),item],updatedAt:new Date().toISOString()}));
   }
   function updateLandscape(id:string,patch:Partial<LandscapeItem>){
@@ -323,7 +347,7 @@ export default function App(){
   }
   function addDecor(){
     if(decorCount<=0)return;
-    const item:DecorItem={id:uid(),type:decorType,preset:decorPreset,count:decorCount,amount:decorAmount};
+    const item:DecorItem={id:uid(),type:decorType,preset:decorPreset,count:decorCount,amount:decorAmount,priceEach:decorPrice,discountPct:decorDiscount};
     if(decorType==="Ground Stakes"){
       setProject(p=>({...p,groundFt:decorAmount,decorItems:[...(p.decorItems||[]).filter(i=>i.type!=="Ground Stakes"),item],updatedAt:new Date().toISOString()}));
     }else{
@@ -596,7 +620,7 @@ export default function App(){
           project={project}
           onApply={(key,value)=>set(key as keyof Project,value as any)}
           onAddLandscape={(type,label,strands)=>{
-            const item:LandscapeItem={id:uid(),type,preset:label,count:1,strandsEach:strands};
+            const item:LandscapeItem={id:uid(),type,preset:label,count:1,strandsEach:strands,priceEach:strands*35,discountPct:0};
             setProject(p=>({...p,landscapeItems:[...(p.landscapeItems||[]),item],updatedAt:new Date().toISOString()}));
           }}
         />
