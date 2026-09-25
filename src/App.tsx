@@ -705,6 +705,8 @@ export default function App(){
         <PhotoMeasure
           project={project}
           onApply={(key,value)=>set(key as keyof Project,value as any)}
+          onAddC9={(area,feet,source,confidence)=>addMeasuredC9(area,feet,source,confidence)}
+          onRecord={(label,value,unit,source,confidence,reference)=>recordMeasurement(label,value,unit,source,confidence,reference)}
           onAddLandscape={(type,label,strands)=>{
             const item:LandscapeItem={id:uid(),type,preset:label,count:1,strandsEach:strands,priceEach:strands*35,discountPct:0};
             setProject(p=>({...p,landscapeItems:[...(p.landscapeItems||[]),item],updatedAt:new Date().toISOString()}));
@@ -902,10 +904,12 @@ type MeasureSection={id:string;target:MeasureField;points:DrawPoint[]};
 type ObjectKind="Palm"|"Tree"|"Column"|"Bush";
 
 function PhotoMeasure({
-  project,onApply,onAddLandscape
+  project,onApply,onAddC9,onRecord,onAddLandscape
 }:{
   project:Project;
   onApply:(key:MeasureField,value:number)=>void;
+  onAddC9:(area:C9Area,feet:number,source:string,confidence:string)=>void;
+  onRecord:(label:string,value:number,unit:string,source:MeasurementRecord["source"],confidence:MeasurementRecord["confidence"],reference?:string)=>void;
   onAddLandscape:(type:LandscapeItem["type"],label:string,strands:number)=>void;
 }){
   const [imageUrl,setImageUrl]=useState("");
@@ -927,6 +931,8 @@ function PhotoMeasure({
   const [columnSides,setColumnSides]=useState<1|2|3|4>(4);
   const [bushDepth,setBushDepth]=useState(2);
   const [objectAdded,setObjectAdded]=useState("");
+  const [measurementSource,setMeasurementSource]=useState<MeasurementRecord["source"]>("Photo reference");
+  const [measurementConfidence,setMeasurementConfidence]=useState<MeasurementRecord["confidence"]>("Medium");
 
   const imageDistance=(a:DrawPoint,b:DrawPoint)=>{
     const dx=(b.x-a.x)/100*imageSize.w;
@@ -1064,7 +1070,17 @@ function PhotoMeasure({
   function doneDrawing(){newSection()}
   function removeSection(id:string){setSections(prev=>prev.filter(s=>s.id!==id))}
   function clearTarget(){setSections(prev=>prev.filter(s=>s.target!==target));setActivePoints([])}
-  function useLineMeasurement(){if(totalFeet>0)onApply(target,Math.round(totalFeet*10)/10)}
+  function useLineMeasurement(){
+    if(totalFeet<=0)return;
+    const feet=Math.round(totalFeet*10)/10;
+    const map:Partial<Record<MeasureField,C9Area>>={roofFt:"Roofline",ridgeFt:"Ridgeline",groundFt:"Garden Bed / Ground",garageFt:"Garage / Architecture",windowFt:"Window Outline"};
+    const area=map[target];
+    if(area)onAddC9(area,feet,referencePreset+" · "+referenceFt+" ft",measurementConfidence);
+    else{
+      onApply(target,feet);
+      onRecord(targetLabel(target),feet,"ft",measurementSource,measurementConfidence,referencePreset+" · "+referenceFt+" ft");
+    }
+  }
   function clearObject(){
     setObjectHeightPoints([]);setObjectWidthPoints([]);setHiddenDepthIn(0);setColumnSides(4);setObjectAdded("");
   }
@@ -1072,6 +1088,7 @@ function PhotoMeasure({
     if(!objectDims)return;
     const strands=objectKind==="Bush"?objectDims.bushStrands:objectDims.strands;
     const label=`Measured ${objectKind} · ${formatFeetInches(objectDims.height)} H × ${formatFeetInches(objectDims.width)} W`;
+    onRecord(objectKind+" · "+label,objectDims.height,"ft",measurementSource,measurementConfidence,referencePreset+" · "+referenceFt+" ft");
     onAddLandscape(objectKind,label,strands);
     setObjectAdded(`Added to estimate · ${strands} strands`);
   }
@@ -1113,6 +1130,10 @@ function PhotoMeasure({
             <Field label="What are you measuring?"><select className="input" value={target} onChange={e=>{newSection();setTarget(e.target.value as MeasureField)}}>
               <option value="roofFt">Roofline</option><option value="ridgeFt">Ridgeline</option><option value="groundFt">Ground stake / garden bed C9</option><option value="garageFt">Garage outline</option><option value="windowFt">Window outline</option><option value="bushFt">Garden / bed length</option>
             </select></Field>
+            <div className="measurement-meta-grid">
+              <Field label="Source"><select className="input" value={measurementSource} onChange={e=>setMeasurementSource(e.target.value as MeasurementRecord["source"])}><option>Photo reference</option><option>Manual</option><option>Google Earth</option><option>Field verified</option></select></Field>
+              <Field label="Confidence"><select className="input" value={measurementConfidence} onChange={e=>setMeasurementConfidence(e.target.value as MeasurementRecord["confidence"])}><option>High</option><option>Medium</option><option>Needs verification</option></select></Field>
+            </div>
             <div className="live-measure-card"><span>Live section</span><b>{activeFeet.toFixed(1)} ft</b><small>Total {targetLabel(target)}: {totalFeet.toFixed(1)} ft</small></div>
             <button className="undo-point-button" disabled={activePoints.length===0} onClick={undoLastPoint}>↶ Undo Last Point</button>
             <div className="section-primary-actions">
@@ -1121,9 +1142,13 @@ function PhotoMeasure({
             </div>
             <button className="clear-measurement-button" onClick={clearTarget}>Clear {targetLabel(target)}</button>
             {targetSections.length>0&&<div className="section-list">{targetSections.map((s,i)=><div key={s.id}><span>Section {i+1}</span><b>{lineFeet(s.points).toFixed(1)} ft</b><button onClick={()=>removeSection(s.id)}>Remove</button></div>)}</div>}
-            <button className="primary full" disabled={totalFeet<=0} onClick={useLineMeasurement}>Use {totalFeet.toFixed(1)} ft in Estimate</button>
+            <button className="primary full" disabled={totalFeet<=0} onClick={useLineMeasurement}>{target==="bushFt"?"Save Measurement":"Add "+totalFeet.toFixed(1)+" ft to Estimate"}</button>
           </>:<>
             <Field label="Object"><select className="input" value={objectKind} onChange={e=>{setObjectKind(e.target.value as ObjectKind);clearObject()}}><option>Palm</option><option>Tree</option><option>Column</option><option>Bush</option></select></Field>
+            <div className="measurement-meta-grid">
+              <Field label="Source"><select className="input" value={measurementSource} onChange={e=>setMeasurementSource(e.target.value as MeasurementRecord["source"])}><option>Photo reference</option><option>Manual</option><option>Google Earth</option><option>Field verified</option></select></Field>
+              <Field label="Confidence"><select className="input" value={measurementConfidence} onChange={e=>setMeasurementConfidence(e.target.value as MeasurementRecord["confidence"])}><option>High</option><option>Medium</option><option>Needs verification</option></select></Field>
+            </div>
             <div className="object-axis-tabs">
               <button className={objectAxis==="height"?"active":""} onClick={()=>setObjectAxis("height")}>1 · Measure Height</button>
               <button className={objectAxis==="width"?"active":""} onClick={()=>setObjectAxis("width")}>2 · Measure Width</button>
