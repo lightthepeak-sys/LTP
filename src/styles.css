@@ -182,3 +182,14 @@
 .clear-measurement-button{width:100%;margin-top:10px;border:1px solid #fecaca;background:#fff;color:#b91c1c;border-radius:9px;padding:8px;font-weight:800}
 .strand-recommendation{grid-column:1/-1;border:1px solid #86efac!important;background:#f0fdf4!important}.strand-recommendation b{font-size:22px!important;color:#166534}
 @media(max-width:650px){.section-primary-actions{grid-template-columns:1fr 1fr}}
+
+/* Final measurement visibility tuning */
+.measure-image-surface .measure-roofFt{stroke-width:3.5px!important}
+.measure-image-surface .measure-ridgeFt,
+.measure-image-surface .measure-groundFt,
+.measure-image-surface .measure-garageFt,
+.measure-image-surface .measure-windowFt,
+.measure-image-surface .measure-bushFt{stroke-width:3px!important}
+.measure-image-surface .measure-label{font-size:1.35px!important;stroke-width:.38!important}
+.measure-image-surface .measure-label.live{font-size:1.55px!important}
+.measure-image-surface .ref-line{stroke:#7c3aed;stroke-width:2.5px;vector-effect:non-scaling-stroke}
