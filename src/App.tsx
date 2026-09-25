@@ -62,15 +62,17 @@ const INV:Record<string,InventoryItem>={
   stakes7:{name:'Minleon 7" Ground Stakes',category:"Stakes",on:250,unit:"stakes",cost:.90,supplier:"CLC"},
   stakes5:{name:'Minleon 5" Stakes',category:"Stakes",on:400,unit:"stakes",cost:.45,supplier:"LGL"},
   stakesCrown:{name:'Minleon 7.5" Crown Stakes',category:"Stakes",on:100,unit:"stakes",cost:.40,supplier:"LGL"},
-  wreath48:{name:'48" Lush Mixed Pine Wreath · Unlit',category:"Greenery",on:19,unit:"wreaths",cost:99.99,supplier:"LGL"},
-  garland9:{name:"9ft Minleon Prelit Garland · Sun Warm",category:"Greenery",on:2,unit:"sections",cost:152,supplier:"CLC"},
+  wreath36:{name:'36" Pre-Lit Wreath · working cost',category:"Greenery",on:0,unit:"wreaths",cost:85,supplier:"TBD",note:"Working pre-lit cost. Replace with verified supplier cost."},
+  wreath48:{name:'48" Pre-Lit Wreath',category:"Greenery",on:19,unit:"wreaths",cost:99.99,supplier:"LGL",note:"Treat all sold wreaths as pre-lit per company standard."},
+  wreath60:{name:'60" Pre-Lit Wreath · working cost',category:"Greenery",on:0,unit:"wreaths",cost:300,supplier:"TBD",note:"Working pre-lit cost. Replace with verified supplier cost."},
+  garland9:{name:"9ft Minleon Pre-Lit Garland · Sun Warm",category:"Greenery",on:2,unit:"sections",cost:152,supplier:"CLC"},
   spt:{name:"Green SPT-1 Blank Wire",category:"Electrical",on:4750,unit:"ft",cost:.26,supplier:"CLC/LGL"},
   plugUniversal:{name:"Universal / One-Plug SPT-1",category:"Electrical",on:850,unit:"plugs",cost:1.04,supplier:"CLC/LGL"},
   plugMale:{name:"Male SPT-1 Plugs",category:"Electrical",on:250,unit:"plugs",cost:1.04,supplier:"LGL"},
   plugFemale:{name:"Female SPT-1 Plugs",category:"Electrical",on:425,unit:"plugs",cost:1.04,supplier:"CLC/LGL"},
   timerPhoto:{name:"Weatherproof Photocell Timers",category:"Timers",on:10,unit:"timers",cost:14.95,supplier:"CLC",legacy:true},
   timerMechanical:{name:"Mechanical Timers",category:"Timers",on:5,unit:"timers",cost:19.95,supplier:"LGL",legacy:true},
-  timerTouchSmart:{name:"TouchSmart Digital Timers",category:"Timers",on:0,unit:"timers",cost:0,supplier:"TBD",reorder:10,note:"New timer standard. Exact SKU/cost still needs to be entered."},
+  timerTouchSmart:{name:"TouchSmart Digital Timers",category:"Timers",on:0,unit:"timers",cost:0,supplier:"TBD",reorder:10,note:"New timer standard. Exact SKU/cost still needs to be entered. Material estimate temporarily uses photocell timer cost as fallback."},
   bowHbl18:{name:'HBL Velvet Bow · Gold · 18"',category:"Bows",on:4,unit:"bows",cost:35.91,supplier:"CLC"},
   bowMinleon18:{name:'Minleon Red/Gold Bow · 18"',category:"Bows",on:4,unit:"bows",cost:34,supplier:"CLC"},
   bowStruct12:{name:'Structural Red/Gold Bow · 12"',category:"Bows",on:3,unit:"bows",cost:19.99,supplier:"LGL"},
@@ -78,6 +80,17 @@ const INV:Record<string,InventoryItem>={
   bowStruct18:{name:'Structural Red/Gold Bow · 18"',category:"Bows",on:3,unit:"bows",cost:39.99,supplier:"LGL"},
   permanent:{name:"Minleon Permanent Lighting",category:"Permanent",on:200,unit:"ft",cost:0,supplier:"Current inventory",note:"Current balance supplied by company; no cut/waste allowance."}
 };
+const CHRISTMAS_BOM={
+  c9WastePct:.10,
+  sptPctOfC9:.10,
+  sptMinFt:25,
+  plugsPerArea:1,
+  timerQty:1,
+  defaultWreathBowKey:"bowMinleon18",
+  miscConsumablesPct:.05
+};
+
+
 
 const complexityRates:Record<string,number>={
   "Straight / simple":0,
@@ -219,25 +232,39 @@ export default function App(){
 
     const selling=c9Selling+landscapeSelling+decorSelling;
     const clipCost=project.roofSurface==="Tile"?INV.clipTile.cost:project.roofSurface==="Metal"?INV.clipMetal.cost:INV.clipShingle.cost;
+    const c9BaseFeet=c9Items.length?c9Items.reduce((s,i)=>s+i.feet,0):totalC9Feet;
+    const c9AreaCount=c9Items.length?c9Items.length:(c9BaseFeet>0?1:0);
     const c9Material=c9Items.length?c9Items.reduce((s,i)=>{
-      const bulbs=Math.ceil(i.feet/1.25);
+      const plannedFeet=i.feet*(1+CHRISTMAS_BOM.c9WastePct);
+      const bulbs=Math.ceil(plannedFeet/1.25);
       const bulbCost=i.area==="Garden Bed / Ground"?INV.c9Traditional.cost:colorCost(i.color);
       const hardware=i.area==="Garden Bed / Ground"?INV.stakesCircle.cost:i.area==="Ridgeline"?INV.clipRidge.cost:clipCost;
-      return s+bulbs*(bulbCost+hardware)+i.feet*INV.c9Cord15.cost;
+      return s+bulbs*(bulbCost+hardware)+plannedFeet*INV.c9Cord15.cost;
     },0):
-      (roofBulbs+ridgeBulbs)*colorCost(project.c9Color)+groundBulbs*INV.c9Traditional.cost+
-      totalC9Feet*INV.c9Cord15.cost+roofBulbs*clipCost+ridgeBulbs*INV.clipRidge.cost+groundBulbs*INV.stakesCircle.cost;
+      ((roofBulbs+ridgeBulbs)*colorCost(project.c9Color)+groundBulbs*INV.c9Traditional.cost+
+      totalC9Feet*INV.c9Cord15.cost+roofBulbs*clipCost+ridgeBulbs*INV.clipRidge.cost+groundBulbs*INV.stakesCircle.cost)*(1+CHRISTMAS_BOM.c9WastePct);
+
+    const sptFeet=c9BaseFeet>0?Math.max(CHRISTMAS_BOM.sptMinFt,c9BaseFeet*CHRISTMAS_BOM.sptPctOfC9):0;
+    const plugPairs=c9AreaCount*CHRISTMAS_BOM.plugsPerArea;
+    const timerCost=c9BaseFeet>0?(INV.timerTouchSmart.cost>0?INV.timerTouchSmart.cost:INV.timerPhoto.cost):0;
+    const electricalMaterial=sptFeet*INV.spt.cost+plugPairs*(INV.plugMale.cost+INV.plugFemale.cost)+timerCost;
 
     const existingMinis=Math.max(0,(INV.miniSun.on-(INV.miniSun.damaged||0)));
     const minleonUsed=Math.min(existingMinis,miniStrands);
     const s4Used=Math.max(0,miniStrands-minleonUsed);
     const landscapeMaterial=minleonUsed*INV.miniSun.cost+s4Used*INV.s4Mini.cost;
     const decorMaterial=decorItems.reduce((s,i)=>{
-      if(i.type==="Wreath")return s+i.count*(i.preset==="48 in"?INV.wreath48.cost:i.preset==="36 in"?85:300);
+      if(i.type==="Wreath"){
+        const wreathCost=i.preset==="36 in"?INV.wreath36.cost:i.preset==="48 in"?INV.wreath48.cost:INV.wreath60.cost;
+        const bowCost=INV[CHRISTMAS_BOM.defaultWreathBowKey].cost;
+        return s+i.count*(wreathCost+bowCost);
+      }
       if(i.type==="Garland")return s+Math.ceil(i.amount/9)*INV.garland9.cost;
       return s;
     },0);
-    const material=c9Material+landscapeMaterial+decorMaterial;
+    const baseMaterial=c9Material+electricalMaterial+landscapeMaterial+decorMaterial;
+    const miscConsumables=baseMaterial*CHRISTMAS_BOM.miscConsumablesPct;
+    const material=baseMaterial+miscConsumables;
     return {selling,material,gp:selling-material,gm:selling?((selling-material)/selling)*100:0,roofRate,suggestedRoofRate,roofBulbs,ridgeBulbs,groundBulbs,bushStrands:0,miniStrands};
   },[project]);
 
@@ -272,15 +299,31 @@ export default function App(){
       u[clip]=(u[clip]||0)+roofBulbs;
       applyColor(u,p.c9Color,roofBulbs+ridgeBulbs);
     }
+    const c9BaseFeet=c9Items.length?c9Items.reduce((s,i)=>s+i.feet,0):p.roofFt+p.ridgeFt+p.groundFt+p.garageFt+p.windowFt;
+    const c9AreaCount=c9Items.length?c9Items.length:(c9BaseFeet>0?1:0);
+    if(c9BaseFeet>0){
+      // Add 10% planning allowance to cord and matching bulb/hardware quantities.
+      u.c9Cord15=(u.c9Cord15||0)*1.10;
+      Object.keys(u).filter(k=>["c9Sun","c9Traditional","c9Cool","c9Pure","c9Red","c9Green","c9Blue","c9Multi","c9Pink","c9Yellow","c9Purple","clipShingle","clipTile","clipMetal","clipRidge","stakesCircle"].includes(k)).forEach(k=>u[k]=Math.ceil((u[k]||0)*1.10));
+      u.spt=Math.max(CHRISTMAS_BOM.sptMinFt,c9BaseFeet*CHRISTMAS_BOM.sptPctOfC9);
+      u.plugMale=c9AreaCount*CHRISTMAS_BOM.plugsPerArea;
+      u.plugFemale=c9AreaCount*CHRISTMAS_BOM.plugsPerArea;
+      u.timerTouchSmart=CHRISTMAS_BOM.timerQty;
+    }
     const minleonAvailable=Math.max(0,INV.miniSun.on-(INV.miniSun.damaged||0));
     u.miniSun=Math.min(minleonAvailable,minis);
     u.s4Mini=Math.max(0,minis-u.miniSun);
     const decorItems=p.decorItems||[];
     if(decorItems.length){
+      u.wreath36=decorItems.filter(i=>i.type==="Wreath"&&i.preset==="36 in").reduce((s,i)=>s+i.count,0);
       u.wreath48=decorItems.filter(i=>i.type==="Wreath"&&i.preset==="48 in").reduce((s,i)=>s+i.count,0);
+      u.wreath60=decorItems.filter(i=>i.type==="Wreath"&&i.preset==="60 in").reduce((s,i)=>s+i.count,0);
+      const wreathCount=decorItems.filter(i=>i.type==="Wreath").reduce((s,i)=>s+i.count,0);
+      u[CHRISTMAS_BOM.defaultWreathBowKey]=(u[CHRISTMAS_BOM.defaultWreathBowKey]||0)+wreathCount;
       u.garland9=decorItems.filter(i=>i.type==="Garland").reduce((s,i)=>s+Math.ceil(i.amount/9),0);
     }else{
       if(p.wreathSize===48)u.wreath48=p.wreathQty;
+      if(p.wreathQty>0)u[CHRISTMAS_BOM.defaultWreathBowKey]=(u[CHRISTMAS_BOM.defaultWreathBowKey]||0)+p.wreathQty;
       u.garland9=Math.ceil(p.garlandFt/9);
     }
     return u;
@@ -691,6 +734,18 @@ export default function App(){
               {(project.landscapeItems||[]).map(i=><div className="quote-review-row" key={i.id}><span>{i.preset}</span><span>{i.count} × {i.strandsEach} strands · {money(i.priceEach??i.strandsEach*35)} each{i.discountPct?" · "+i.discountPct+"% off":""}</span><b>{money(lineTotal(i.count,i.priceEach??i.strandsEach*35,i.discountPct||0))}</b></div>)}
               {(project.decorItems||[]).map(i=>{const units=i.type==="Garland"||i.type==="Ground Stakes"?i.amount:i.count;return <div className="quote-review-row" key={i.id}><span>{i.type==="Wreath"?i.preset+" Wreath":i.type}</span><span>{units} × {money(i.priceEach||0)}{i.discountPct?" · "+i.discountPct+"% off":""}</span><b>{money(lineTotal(units,i.priceEach||0,i.discountPct||0))}</b></div>})}
             </div>}
+            {project.service==="Christmas"&&<details className="material-assumptions">
+              <summary>Material Cost Assumptions</summary>
+              <div>
+                <span>Wreaths & greenery: pre-lit</span>
+                <span>Bow: 1 × 18" Minleon red/gold per wreath</span>
+                <span>C9 material allowance: 10%</span>
+                <span>SPT extension wire: 10% of C9 footage, 25-ft minimum</span>
+                <span>Plugs: 1 male + 1 female per C9 area</span>
+                <span>Timer: 1 per Christmas job; TouchSmart cost uses $14.95 fallback until verified</span>
+                <span>Misc. mounting/connection consumables: 5% of material subtotal</span>
+              </div>
+            </details>}
             {shortages.length>0&&<div className="warning-box red-box"><b>Inventory shortage:</b> {shortages.map(([k,u])=>INV[k]?.name+" ("+qty(u-availability(k).available)+" short)").join(", ")}</div>}
             <div className="inline-jobber">
               <div className="inline-jobber-head"><div><span className="eyebrow">Jobber note</span><h3>Scope-aware install note</h3></div><button onClick={()=>navigator.clipboard.writeText(handoff)}>Copy note</button></div>
