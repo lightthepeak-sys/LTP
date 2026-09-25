@@ -568,6 +568,7 @@ export default function App(){
                   <div className="quote-line-name"><small>C9</small><b>{item.area}</b><span>{item.color}</span></div>
                   <Field label="Feet"><input className="input" type="number" min="0" value={item.feet} onChange={e=>updateC9Item(item.id,{feet:+e.target.value})}/></Field>
                   <Field label="$/ft"><input className="input" type="number" min="0" step=".25" value={item.rate} onChange={e=>updateC9Item(item.id,{rate:+e.target.value})}/></Field>
+                  <Field label="Color"><select className="input" value={item.color} onChange={e=>updateC9Item(item.id,{color:e.target.value})}>{["Sun Warm White","Pure White","Cool White","Red","Green","Red / Green","Multicolor","Blue","Pink","Purple","Yellow"].map(x=><option key={x}>{x}</option>)}</select></Field>
                   <Field label="Discount %"><input className="input" type="number" min="0" max="100" value={item.discountPct||0} onChange={e=>updateC9Item(item.id,{discountPct:+e.target.value})}/></Field>
                   <div className="quote-line-total"><span>Line total</span><b>{money(lineTotal(item.feet,item.rate,item.discountPct||0))}</b></div>
                   <button className="icon-remove" aria-label="Remove" onClick={()=>removeC9Item(item.id)}>×</button>
@@ -622,7 +623,7 @@ export default function App(){
                 if(t==="Garland")setDecorAmount(9);
                 if(t==="Ground Stakes")setDecorAmount(25);
                 setDecorPrice(decorDefaultPrice(t,preset));
-              }}><option>Wreath</option><option>Garland</option><option>Snowflake</option><option>Teardrop</option><option>Ground Stakes</option></select></Field>
+              }}><option>Wreath</option><option>Garland</option><option>Snowflake</option><option>Teardrop</option></select></Field>
               {decorType==="Wreath"&&<Field label="Size"><select className="input" value={decorPreset} onChange={e=>{const p=e.target.value;setDecorPreset(p);setDecorPrice(decorDefaultPrice("Wreath",p))}}><option>36 in</option><option>48 in</option><option>60 in</option></select></Field>}
               {(decorType==="Garland"||decorType==="Ground Stakes")?<Field label="Length · ft"><input className="input" type="number" min="0" value={decorAmount} onChange={e=>setDecorAmount(+e.target.value)}/></Field>:<Field label="Quantity"><input className="input" type="number" min="1" value={decorCount} onChange={e=>setDecorCount(+e.target.value)}/></Field>}
               <Field label={decorType==="Garland"||decorType==="Ground Stakes"?"Price · $/ft":"Price each"}><input className="input" type="number" min="0" step="1" value={decorPrice} onChange={e=>setDecorPrice(+e.target.value)}/></Field>
@@ -1307,29 +1308,31 @@ function buildHandoff(p:Project,e:any){
   }
 
   const lines:string[]=[
-    "PROPERTY: "+p.stories+" story · "+p.roofSurface+" · "+p.complexity+" · "+p.access,
-    "COLOR: "+p.c9Color
+    "PROPERTY: "+p.stories+" story · "+p.roofSurface+" · "+p.complexity+" · "+p.access
   ];
 
-  if(p.roofFt>0||p.garageFt>0||p.windowFt>0){
-    lines.push("","C9 ROOFLINE / OUTLINES");
-    if(p.roofFt>0)lines.push("Roofline: "+p.roofFt+" ft");
-    if(p.garageFt>0)lines.push("Garage / architectural outline: "+p.garageFt+" ft");
-    if(p.windowFt>0)lines.push("Window outline: "+p.windowFt+" ft");
-    const mainBulbs=Math.ceil((p.roofFt+p.garageFt+p.windowFt)/1.25);
-    lines.push("Expected materials: "+mainBulbs+" C9 bulbs · "+mainBulbs+" "+(p.roofSurface==="Tile"?"tile clips":p.roofSurface==="Metal"?"magnetic clips":"roof clips")+" · "+qty(p.roofFt+p.garageFt+p.windowFt)+" ft 15-inch socket cord");
-  }
-
-  if(p.ridgeFt>0){
-    lines.push("","RIDGELINE");
-    lines.push(p.ridgeFt+" ft");
-    lines.push("Expected materials: "+e.ridgeBulbs+" C9 bulbs · "+e.ridgeBulbs+" ridge clips · "+p.ridgeFt+" ft 15-inch socket cord");
-  }
-
-  if(p.groundFt>0){
-    lines.push("","GROUND STAKES");
-    lines.push(p.groundFt+" ft");
-    lines.push("Expected materials: "+e.groundBulbs+" Traditional Warm C9 bulbs · "+e.groundBulbs+" ground stakes · "+p.groundFt+" ft 15-inch socket cord");
+  const c9Items=p.c9Items||[];
+  if(c9Items.length){
+    c9Items.forEach(i=>{
+      const bulbs=Math.ceil(i.feet/1.25);
+      lines.push("","C9 · "+i.area.toUpperCase());
+      lines.push(i.feet+" ft · "+i.color);
+      if(i.area==="Garden Bed / Ground")lines.push("Expected materials: "+bulbs+" Traditional Warm C9 bulbs · "+bulbs+" ground stakes · "+i.feet+" ft 15-inch socket cord");
+      else if(i.area==="Ridgeline")lines.push("Expected materials: "+bulbs+" C9 bulbs · "+bulbs+" ridge clips · "+i.feet+" ft 15-inch socket cord");
+      else lines.push("Expected materials: "+bulbs+" C9 bulbs · "+bulbs+" "+(p.roofSurface==="Tile"?"tile clips":p.roofSurface==="Metal"?"magnetic clips":"roof clips")+" · "+i.feet+" ft 15-inch socket cord");
+    });
+  }else{
+    lines.push("COLOR: "+p.c9Color);
+    if(p.roofFt>0||p.garageFt>0||p.windowFt>0){
+      lines.push("","C9 ROOFLINE / OUTLINES");
+      if(p.roofFt>0)lines.push("Roofline: "+p.roofFt+" ft");
+      if(p.garageFt>0)lines.push("Garage / architectural outline: "+p.garageFt+" ft");
+      if(p.windowFt>0)lines.push("Window outline: "+p.windowFt+" ft");
+      const mainBulbs=Math.ceil((p.roofFt+p.garageFt+p.windowFt)/1.25);
+      lines.push("Expected materials: "+mainBulbs+" C9 bulbs · "+mainBulbs+" "+(p.roofSurface==="Tile"?"tile clips":p.roofSurface==="Metal"?"magnetic clips":"roof clips")+" · "+qty(p.roofFt+p.garageFt+p.windowFt)+" ft 15-inch socket cord");
+    }
+    if(p.ridgeFt>0){lines.push("","RIDGELINE",p.ridgeFt+" ft","Expected materials: "+e.ridgeBulbs+" C9 bulbs · "+e.ridgeBulbs+" ridge clips · "+p.ridgeFt+" ft 15-inch socket cord")}
+    if(p.groundFt>0){lines.push("","GROUND STAKES",p.groundFt+" ft","Expected materials: "+e.groundBulbs+" Traditional Warm C9 bulbs · "+e.groundBulbs+" ground stakes · "+p.groundFt+" ft 15-inch socket cord")}
   }
 
   const landscape=p.landscapeItems||[];
