@@ -238,7 +238,7 @@ export default function App(){
       return s;
     },0);
     const material=c9Material+landscapeMaterial+decorMaterial;
-    return {selling,material,gp:selling-material,gm:selling?((selling-material)/selling)*100:0,roofRate,suggestedRoofRate,roofBulbs,ridgeBulbs,groundBulbs,bushStrands,miniStrands};
+    return {selling,material,gp:selling-material,gm:selling?((selling-material)/selling)*100:0,roofRate,suggestedRoofRate,roofBulbs,ridgeBulbs,groundBulbs,bushStrands:0,miniStrands};
   },[project]);
 
   const projectUsage=(p:Project)=>{
