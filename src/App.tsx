@@ -685,6 +685,12 @@ export default function App(){
               <div><span>Gross profit</span><b>{money(estimate.gp)}</b></div>
               <div><span>Gross margin</span><b>{estimate.gm.toFixed(1)}%</b></div>
             </div>}
+            {project.service==="Christmas"&&<div className="quote-review-lines">
+              <div className="quote-review-head"><b>Estimate Scope</b><span>Edit items in Steps 2–3 if anything is wrong.</span></div>
+              {(project.c9Items||[]).map(i=><div className="quote-review-row" key={i.id}><span>C9 · {i.area}</span><span>{qty(i.feet)} ft × {money(i.rate)}/ft{i.discountPct?" · "+i.discountPct+"% off":""}</span><b>{money(lineTotal(i.feet,i.rate,i.discountPct||0))}</b></div>)}
+              {(project.landscapeItems||[]).map(i=><div className="quote-review-row" key={i.id}><span>{i.preset}</span><span>{i.count} × {i.strandsEach} strands · {money(i.priceEach??i.strandsEach*35)} each{i.discountPct?" · "+i.discountPct+"% off":""}</span><b>{money(lineTotal(i.count,i.priceEach??i.strandsEach*35,i.discountPct||0))}</b></div>)}
+              {(project.decorItems||[]).map(i=>{const units=i.type==="Garland"||i.type==="Ground Stakes"?i.amount:i.count;return <div className="quote-review-row" key={i.id}><span>{i.type==="Wreath"?i.preset+" Wreath":i.type}</span><span>{units} × {money(i.priceEach||0)}{i.discountPct?" · "+i.discountPct+"% off":""}</span><b>{money(lineTotal(units,i.priceEach||0,i.discountPct||0))}</b></div>})}
+            </div>}
             {shortages.length>0&&<div className="warning-box red-box"><b>Inventory shortage:</b> {shortages.map(([k,u])=>INV[k]?.name+" ("+qty(u-availability(k).available)+" short)").join(", ")}</div>}
             <div className="inline-jobber">
               <div className="inline-jobber-head"><div><span className="eyebrow">Jobber note</span><h3>Scope-aware install note</h3></div><button onClick={()=>navigator.clipboard.writeText(handoff)}>Copy note</button></div>
@@ -712,6 +718,13 @@ export default function App(){
             setProject(p=>({...p,landscapeItems:[...(p.landscapeItems||[]),item],updatedAt:new Date().toISOString()}));
           }}
         />
+        {(project.measurements||[]).length>0&&<details className="measurement-history">
+          <summary>Saved Measurements <span>{(project.measurements||[]).length}</span></summary>
+          <div className="measurement-history-list">{(project.measurements||[]).slice().reverse().map(m=><div key={m.id}>
+            <div><b>{m.label}</b><span>{m.source} · {m.confidence}</span></div>
+            <strong>{qty(m.value)} {m.unit}</strong>
+          </div>)}</div>
+        </details>}
       </section>}
 
       {tab==="projects"&&<section className="page">
@@ -739,11 +752,11 @@ export default function App(){
         </div>
 
         {serviceProjects.length===0?<div className="empty-state">No {projectServiceView} projects yet.</div>:draftsOnly?
-          <ProjectGroup title="Draft / Unfinished" tone="orange" projects={unfinishedProjects} onAction={projectAction}/>:
+          <ProjectGroup title="Draft / Unfinished" tone="orange" projects={unfinishedProjects} onAction={projectAction} expectedUsage={projectUsage} onSaveCloseout={saveCloseout} onReopenCloseout={reopenCloseout}/>:
           <div className="pipeline-board">
-            <ProjectGroup title="Estimate Sent · Open" tone="blue" projects={visibleOpen} onAction={projectAction}/>
-            <ProjectGroup title="Quote Approved · Closed Won" tone="green" projects={visibleApproved} onAction={projectAction}/>
-            <ProjectGroup title="Quote Not Approved · Closed Lost" tone="red" projects={visibleLost} onAction={projectAction}/>
+            <ProjectGroup title="Estimate Sent · Open" tone="blue" projects={visibleOpen} onAction={projectAction} expectedUsage={projectUsage} onSaveCloseout={saveCloseout} onReopenCloseout={reopenCloseout}/>
+            <ProjectGroup title="Quote Approved · Closed Won" tone="green" projects={visibleApproved} onAction={projectAction} expectedUsage={projectUsage} onSaveCloseout={saveCloseout} onReopenCloseout={reopenCloseout}/>
+            <ProjectGroup title="Quote Not Approved · Closed Lost" tone="red" projects={visibleLost} onAction={projectAction} expectedUsage={projectUsage} onSaveCloseout={saveCloseout} onReopenCloseout={reopenCloseout}/>
           </div>}
       </section>}
 
@@ -1208,8 +1221,16 @@ function formatFeetInches(feet:number){
 function midPoint(points:DrawPoint[]){if(!points.length)return{x:50,y:50};const i=Math.floor(points.length/2);if(points.length%2)return points[i];return{x:(points[i-1].x+points[i].x)/2,y:(points[i-1].y+points[i].y)/2}}
 function distance(a:{x:number;y:number},b:{x:number;y:number}){return Math.hypot(b.x-a.x,b.y-a.y)}
 
-function ProjectGroup({title,tone,projects,onAction}:{title:string;tone:string;projects:Project[];onAction:(p:Project,a:string)=>void}){
-  return <details className={"project-group collapsible "+tone}>
+function ProjectGroup({
+  title,tone,projects,onAction,expectedUsage,onSaveCloseout,onReopenCloseout
+}:{
+  title:string;tone:string;projects:Project[];
+  onAction:(p:Project,a:string)=>void;
+  expectedUsage:(p:Project)=>Record<string,number>;
+  onSaveCloseout:(p:Project,actual:ActualUsage,notes:string)=>void;
+  onReopenCloseout:(p:Project)=>void;
+}){
+  return <details className={"project-group collapsible "+tone} open={title.includes("Quote Approved")}>
     <summary className="project-group-head"><h2>{title}</h2><span>{projects.length}</span></summary>
     {projects.length===0?<div className="project-group-empty">No projects in this category.</div>:<div className="project-list">
       {projects.map(p=><article className="project-row pipeline-row" key={p.id}>
@@ -1217,6 +1238,7 @@ function ProjectGroup({title,tone,projects,onAction}:{title:string;tone:string;p
         <span>{p.service}</span>
         <span className={p.quoteComplete?"completion-pill complete":"completion-pill draft"}>{p.quoteComplete?"Quote Complete":"Draft · Step "+(p.draftStep||0)}</span>
         <span className={"status-pill "+p.status.toLowerCase().replaceAll(" ","-")}>{p.status==="Estimate Sent"?"Estimate Sent · Open":p.status==="Quote Approved"?"Closed Won":"Closed Lost"}</span>
+        {p.status==="Quote Approved"&&<span className={p.closeoutComplete?"closeout-pill done":"closeout-pill"}>{p.closeoutComplete?"Inventory Closed Out":"Needs Closeout"}</span>}
         <select className="project-action-select" defaultValue="" onChange={e=>{const a=e.target.value;projectActionReset(e.currentTarget);onAction(p,a)}}>
           <option value="" disabled>Update stage…</option>
           {p.status!=="Estimate Sent"&&<option value="estimate-sent">Mark Estimate Sent · Open</option>}
@@ -1224,10 +1246,43 @@ function ProjectGroup({title,tone,projects,onAction}:{title:string;tone:string;p
           {p.status!=="Quote Not Approved"&&<option value="not-approved">Mark Quote Not Approved · Closed Lost</option>}
           <option value="delete">Delete Project</option>
         </select>
+        {p.status==="Quote Approved"&&<CloseoutEditor project={p} expected={expectedUsage(p)} onSave={onSaveCloseout} onReopen={onReopenCloseout}/>}
       </article>)}
     </div>}
   </details>
 }
+
+function CloseoutEditor({project,expected,onSave,onReopen}:{project:Project;expected:Record<string,number>;onSave:(p:Project,a:ActualUsage,n:string)=>void;onReopen:(p:Project)=>void}){
+  const [open,setOpen]=useState(false);
+  const [actual,setActual]=useState<ActualUsage>(()=>project.actualUsage&&Object.keys(project.actualUsage).length?project.actualUsage:{...expected});
+  const [notes,setNotes]=useState(project.closeoutNotes||"");
+  useEffect(()=>{
+    setActual(project.actualUsage&&Object.keys(project.actualUsage).length?project.actualUsage:{...expected});
+    setNotes(project.closeoutNotes||"");
+  },[project.id,project.closeoutComplete,project.updatedAt]);
+
+  const keys=Array.from(new Set([...Object.keys(expected),...Object.keys(actual)]));
+  return <div className="closeout-wrap">
+    <button className="closeout-toggle" onClick={()=>setOpen(v=>!v)}>{project.closeoutComplete?"View Actual Usage":"Close Out Materials"} {open?"▲":"▼"}</button>
+    {open&&<div className="closeout-panel">
+      <div className="closeout-head"><div><b>Job Material Closeout</b><span>Expected vs actual installed/used.</span></div>{project.closeoutComplete&&<button onClick={()=>onReopen(project)}>Reopen</button>}</div>
+      <div className="closeout-table">
+        <div className="closeout-row header"><span>Material</span><span>Expected</span><span>Actual</span><span>Variance</span></div>
+        {keys.filter(k=>expected[k]||actual[k]).map(k=>{
+          const exp=Number(expected[k]||0),act=Number(actual[k]||0),variance=act-exp;
+          return <div className="closeout-row" key={k}>
+            <span>{INV[k]?.name||k}</span><b>{qty(exp)}</b>
+            <input className="input" type="number" min="0" step=".1" disabled={project.closeoutComplete} value={act} onChange={e=>setActual(a=>({...a,[k]:+e.target.value}))}/>
+            <b className={variance>0?"over":variance<0?"under":""}>{variance>0?"+":""}{qty(variance)}</b>
+          </div>
+        })}
+      </div>
+      <Field label="Variance / closeout notes"><textarea className="input closeout-notes" disabled={project.closeoutComplete} value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Why actual usage differed, damaged product, field change, etc."/></Field>
+      {!project.closeoutComplete&&<button className="primary full" onClick={()=>onSave(project,actual,notes)}>Complete Closeout & Consume Actual Inventory</button>}
+    </div>}
+  </div>
+}
+
 function projectActionReset(el:HTMLSelectElement){setTimeout(()=>{el.value=""},0)}
 
 function Nav({active,tone,onClick,children}:{active:boolean;tone:string;onClick:()=>void;children:any}){
