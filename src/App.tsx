@@ -94,7 +94,9 @@ const REFERENCE_PRESETS=[
   {key:"garage2",label:"2-Car Garage",feet:16,type:"garage2"},
   {key:"door1",label:"Exterior Door",feet:3,type:"door"},
   {key:"door2",label:"Double Entry",feet:6,type:"doubleDoor"},
-  {key:"window",label:"Window",feet:3,type:"window"},
+  {key:"window1",label:"Single Window",feet:3,type:"window1"},
+  {key:"window2",label:"Double Window",feet:6,type:"window2"},
+  {key:"window3",label:"Triple Window",feet:9,type:"window3"},
   {key:"custom",label:"Custom",feet:0,type:"custom"}
 ];
 
@@ -756,94 +758,158 @@ function ReferenceSketch({type}:{type:string}){
     {type==="garage2"&&<><rect x="12" y="18" width="76" height="34" rx="2"/><path d="M18 26 H82 M18 34 H82 M18 42 H82"/><path d="M50 18 V52"/></>}
     {type==="door"&&<><rect x="35" y="10" width="30" height="44" rx="2"/><circle cx="59" cy="33" r="2"/></>}
     {type==="doubleDoor"&&<><rect x="25" y="10" width="50" height="44" rx="2"/><path d="M50 10 V54"/><circle cx="46" cy="33" r="1.7"/><circle cx="54" cy="33" r="1.7"/></>}
-    {type==="window"&&<><rect x="28" y="14" width="44" height="36" rx="2"/><path d="M50 14 V50 M28 32 H72"/></>}
+    {type==="window1"&&<><rect x="34" y="14" width="32" height="36" rx="2"/><path d="M50 14 V50 M34 32 H66"/></>}
+    {type==="window2"&&<><rect x="22" y="14" width="56" height="36" rx="2"/><path d="M50 14 V50 M22 32 H78"/></>}
+    {type==="window3"&&<><rect x="15" y="14" width="70" height="36" rx="2"/><path d="M38 14 V50 M62 14 V50 M15 32 H85"/></>}
     {type==="custom"&&<><path d="M20 32 H80 M20 26 V38 M80 26 V38"/><text x="50" y="22" textAnchor="middle">?</text></>}
   </svg>
 }
+
+type DrawPoint={x:number;y:number};
+type MeasureSection={id:string;target:MeasureField;points:DrawPoint[]};
+type ObjectKind="Palm"|"Tree"|"Column"|"Bush";
 
 function PhotoMeasure({project,onApply}:{project:Project;onApply:(key:MeasureField,value:number)=>void}){
   const [imageUrl,setImageUrl]=useState("");
   const [referencePreset,setReferencePreset]=useState("garage1");
   const [referenceFt,setReferenceFt]=useState(9);
-  const [referencePoints,setReferencePoints]=useState<{x:number;y:number}[]>([]);
-  const [measurePoints,setMeasurePoints]=useState<{x:number;y:number}[]>([]);
-  const [mode,setMode]=useState<"reference"|"measure">("reference");
+  const [referencePoints,setReferencePoints]=useState<DrawPoint[]>([]);
+  const [referenceOpen,setReferenceOpen]=useState(true);
+  const [mode,setMode]=useState<"reference"|"line"|"object">("reference");
   const [target,setTarget]=useState<MeasureField>("roofFt");
-  const [lastResult,setLastResult]=useState(0);
+  const [sections,setSections]=useState<MeasureSection[]>([]);
+  const [activePoints,setActivePoints]=useState<DrawPoint[]>([]);
+  const [objectKind,setObjectKind]=useState<ObjectKind>("Palm");
+  const [objectPoints,setObjectPoints]=useState<DrawPoint[]>([]);
+  const [wrapSpacingIn,setWrapSpacingIn]=useState(6);
+  const [bushDepth,setBushDepth]=useState(2);
 
   const refPixels=referencePoints.length===2?distance(referencePoints[0],referencePoints[1]):0;
   const pixelsPerFoot=refPixels>0&&referenceFt>0?refPixels/referenceFt:0;
   const selectedRef=REFERENCE_PRESETS.find(r=>r.key===referencePreset)||REFERENCE_PRESETS[0];
 
+  const lineFeet=(pts:DrawPoint[])=>{
+    if(pts.length<2||!pixelsPerFoot)return 0;
+    let px=0;for(let i=1;i<pts.length;i++)px+=distance(pts[i-1],pts[i]);
+    return px/pixelsPerFoot;
+  };
+  const activeFeet=lineFeet(activePoints);
+  const targetSections=sections.filter(s=>s.target===target);
+  const savedFeet=targetSections.reduce((sum,s)=>sum+lineFeet(s.points),0);
+  const totalFeet=savedFeet+activeFeet;
+
+  const objectDims=(()=>{
+    if(objectPoints.length!==2||!pixelsPerFoot)return null;
+    const a=objectPoints[0],b=objectPoints[1];
+    const width=Math.abs(b.x-a.x)/pixelsPerFoot;
+    const height=Math.abs(b.y-a.y)/pixelsPerFoot;
+    const circumference=Math.PI*width;
+    const wraps=Math.max(1,Math.ceil(height/(wrapSpacingIn/12)));
+    const wrapFeet=circumference*wraps;
+    const strands=Math.ceil(wrapFeet/25);
+    const bushFace=width*height;
+    const bushSurface=(width+2*bushDepth)*height;
+    return {width,height,circumference,wraps,wrapFeet,strands,bushFace,bushSurface};
+  })();
+
   function upload(e:any){
-    const file=e.target.files?.[0]; if(!file)return;
+    const file=e.target.files?.[0];if(!file)return;
     if(imageUrl)URL.revokeObjectURL(imageUrl);
-    setImageUrl(URL.createObjectURL(file));setReferencePoints([]);setMeasurePoints([]);setLastResult(0);setMode("reference");
+    setImageUrl(URL.createObjectURL(file));setReferencePoints([]);setSections([]);setActivePoints([]);setObjectPoints([]);setReferenceOpen(true);setMode("reference");
   }
   function chooseReference(key:string){
     const ref=REFERENCE_PRESETS.find(r=>r.key===key);if(!ref)return;
-    setReferencePreset(key);if(ref.feet>0)setReferenceFt(ref.feet);setReferencePoints([]);setMode("reference");
+    setReferencePreset(key);if(ref.feet>0)setReferenceFt(ref.feet);setReferencePoints([]);setReferenceOpen(true);setMode("reference");
+  }
+  function pointFromEvent(e:any):DrawPoint{
+    const rect=e.currentTarget.getBoundingClientRect();
+    return {x:(e.clientX-rect.left)/rect.width*100,y:(e.clientY-rect.top)/rect.height*100};
   }
   function clickImage(e:any){
-    if(!imageUrl)return;
-    const rect=e.currentTarget.getBoundingClientRect();
-    const p={x:(e.clientX-rect.left)/rect.width*100,y:(e.clientY-rect.top)/rect.height*100};
-    if(mode==="reference")setReferencePoints(prev=>prev.length>=2?[p]:[...prev,p]);
-    else if(pixelsPerFoot)setMeasurePoints(prev=>[...prev,p]);
+    if(!imageUrl)return;const p=pointFromEvent(e);
+    if(mode==="reference"){
+      setReferencePoints(prev=>{
+        const next=prev.length>=2?[p]:[...prev,p];
+        if(next.length===2)setTimeout(()=>setReferenceOpen(false),250);
+        return next;
+      });return;
+    }
+    if(!pixelsPerFoot)return;
+    if(mode==="object"){setObjectPoints(prev=>prev.length>=2?[p]:[...prev,p]);return}
+    setActivePoints(prev=>[...prev,p]);
   }
-  function finish(){
-    if(measurePoints.length<2||!pixelsPerFoot)return;
-    let px=0;for(let i=1;i<measurePoints.length;i++)px+=distance(measurePoints[i-1],measurePoints[i]);
-    setLastResult(px/pixelsPerFoot);
+  function newSection(){
+    if(activePoints.length>=2)setSections(prev=>[...prev,{id:uid(),target,points:activePoints}]);
+    setActivePoints([]);
   }
-  function clearMeasure(){setMeasurePoints([]);setLastResult(0)}
-  function apply(){if(lastResult>0){onApply(target,Math.round(lastResult*10)/10);clearMeasure()}}
+  function doneDrawing(){newSection();setMode("line")}
+  function removeSection(id:string){setSections(prev=>prev.filter(s=>s.id!==id))}
+  function clearTarget(){setSections(prev=>prev.filter(s=>s.target!==target));setActivePoints([])}
+  function useLineMeasurement(){if(totalFeet>0)onApply(target,Math.round(totalFeet*10)/10)}
 
-  return <div className="measure-clean">
-    <div className="measure-topbar">
+  return <div className="measure-v2">
+    <div className="measure-toolbar">
       <label className="photo-upload"><input type="file" accept="image/*,.avif" onChange={upload}/><span>{imageUrl?"Replace Photo":"Add Property Photo"}</span></label>
-      {imageUrl&&<div className="measure-status">{pixelsPerFoot?"Reference set · ready to measure":"Set a reference first"}</div>}
+      {imageUrl&&referencePoints.length===2&&<button className="reference-chip" onClick={()=>{setReferenceOpen(v=>!v);setMode("reference")}}>
+        <ReferenceSketch type={selectedRef.type}/><span>{selectedRef.label}<b>{referenceFt} ft</b></span><small>{referenceOpen?"Close":"Edit"}</small>
+      </button>}
     </div>
 
-    {!imageUrl?<div className="measure-empty clean-empty"><ReferenceSketch type="garage2"/><b>No photo added</b><span>Add a front, side, or close-up only when photo measurement is needed.</span></div>:
-    <div className="measure-main">
-      <aside className="measure-rail">
-        <div className="rail-section">
-          <span className="rail-step">1</span>
-          <div className="rail-heading"><b>Reference</b><small>Choose what you can clearly see.</small></div>
+    {!imageUrl?<div className="measure-empty clean-empty"><ReferenceSketch type="garage2"/><b>Add a property photo</b><span>Photo measurement is optional. Use it when Google Earth or field dimensions are not enough.</span></div>:
+    <div className="measure-v2-layout">
+      <aside className="measure-v2-rail">
+        {referenceOpen&&<section className="measure-panel compact-reference">
+          <div className="panel-head"><b>Reference</b>{referencePoints.length===2&&<button onClick={()=>setReferenceOpen(false)}>Close</button>}</div>
           <div className="reference-visual-grid">{REFERENCE_PRESETS.map(ref=><button type="button" key={ref.key} onClick={()=>chooseReference(ref.key)} className={referencePreset===ref.key?"selected":""}>
             <ReferenceSketch type={ref.type}/><span>{ref.label}</span><small>{ref.feet?ref.feet+" ft":"Known size"}</small>
           </button>)}</div>
           {referencePreset==="custom"&&<Field label="Known width · ft"><input className="input" type="number" min=".1" step=".1" value={referenceFt} onChange={e=>setReferenceFt(+e.target.value)}/></Field>}
-          <button className={"rail-action "+(mode==="reference"?"active":"")} onClick={()=>setMode("reference")}>{referencePoints.length===2?"Re-mark Reference":"Mark Reference"}</button>
-        </div>
+          <button className="primary full" onClick={()=>setMode("reference")}>{referencePoints.length===2?"Re-mark reference":"Mark reference"}</button>
+        </section>}
 
-        <div className={"rail-section "+(!pixelsPerFoot?"disabled-section":"")}>
-          <span className="rail-step">2</span>
-          <div className="rail-heading"><b>Measure</b><small>Pick an area and trace it.</small></div>
-          <select className="input" disabled={!pixelsPerFoot} value={target} onChange={e=>setTarget(e.target.value as MeasureField)}>
-            <option value="roofFt">Roofline</option><option value="ridgeFt">Ridgeline</option><option value="groundFt">Ground stake line</option><option value="garageFt">Garage outline</option><option value="windowFt">Window outline</option><option value="bushFt">Bush / garden</option>
-          </select>
-          <button className={"rail-action "+(mode==="measure"?"active":"")} disabled={!pixelsPerFoot} onClick={()=>{setMode("measure");clearMeasure()}}>Start Drawing</button>
-          <div className="measure-mini-actions"><button disabled={measurePoints.length<2} onClick={finish}>Finish</button><button onClick={clearMeasure}>Clear</button></div>
-          {lastResult>0&&<div className="measure-result-simple"><span>{targetLabel(target)}</span><b>{lastResult.toFixed(1)} ft</b><button className="primary" onClick={apply}>Use Measurement</button></div>}
-        </div>
+        {!referenceOpen&&<section className="measure-panel measurement-controls">
+          <div className="measure-mode-tabs"><button className={mode==="line"?"active":""} onClick={()=>setMode("line")}>Lines / Sections</button><button className={mode==="object"?"active":""} onClick={()=>setMode("object")}>Palm / Tree / Column / Bush</button></div>
+
+          {mode!=="object"?<>
+            <Field label="What are you measuring?"><select className="input" value={target} onChange={e=>{newSection();setTarget(e.target.value as MeasureField)}}>
+              <option value="roofFt">Roofline</option><option value="ridgeFt">Ridgeline</option><option value="groundFt">Ground stake / garden bed C9</option><option value="garageFt">Garage outline</option><option value="windowFt">Window outline</option><option value="bushFt">Garden / bed length</option>
+            </select></Field>
+            <div className="live-measure-card"><span>Live section</span><b>{activeFeet.toFixed(1)} ft</b><small>Total {targetLabel(target)}: {totalFeet.toFixed(1)} ft</small></div>
+            <div className="section-actions"><button className="primary" disabled={activePoints.length<2} onClick={newSection}>New Section</button><button disabled={activePoints.length<2} onClick={doneDrawing}>Done</button><button onClick={clearTarget}>Clear</button></div>
+            {targetSections.length>0&&<div className="section-list">{targetSections.map((s,i)=><div key={s.id}><span>Section {i+1}</span><b>{lineFeet(s.points).toFixed(1)} ft</b><button onClick={()=>removeSection(s.id)}>Remove</button></div>)}</div>}
+            <button className="primary full" disabled={totalFeet<=0} onClick={useLineMeasurement}>Use {totalFeet.toFixed(1)} ft in Project</button>
+          </>:<>
+            <Field label="Object"><select className="input" value={objectKind} onChange={e=>{setObjectKind(e.target.value as ObjectKind);setObjectPoints([])}}><option>Palm</option><option>Tree</option><option>Column</option><option>Bush</option></select></Field>
+            <div className="object-instruction">Click opposite corners: bottom-left → top-right.</div>
+            {(objectKind==="Palm"||objectKind==="Tree"||objectKind==="Column")&&<Field label="Wrap spacing"><select className="input" value={wrapSpacingIn} onChange={e=>setWrapSpacingIn(+e.target.value)}><option value={4}>4 in tight</option><option value={6}>6 in standard</option><option value={8}>8 in loose</option></select></Field>}
+            {objectKind==="Bush"&&<Field label="Estimated hidden depth · ft"><input className="input" type="number" min=".5" step=".5" value={bushDepth} onChange={e=>setBushDepth(+e.target.value)}/></Field>}
+            {objectDims?<div className="object-results">
+              <div><span>Height</span><b>{objectDims.height.toFixed(1)} ft</b></div><div><span>Width</span><b>{objectDims.width.toFixed(1)} ft</b></div>
+              {objectKind!=="Bush"?<><div><span>Circumference</span><b>{objectDims.circumference.toFixed(1)} ft</b></div><div><span>Estimated wrap</span><b>{objectDims.wrapFeet.toFixed(0)} ft</b></div><div><span>25-ft strands</span><b>{objectDims.strands}</b></div></>:<><div><span>Depth</span><b>{bushDepth.toFixed(1)} ft</b></div><div><span>Visible face</span><b>{objectDims.bushFace.toFixed(1)} sq ft</b></div><div><span>Approx. wrap surface</span><b>{objectDims.bushSurface.toFixed(1)} sq ft</b></div></>}
+            </div>:<div className="quiet-empty">Mark two opposite corners on the photo.</div>}
+            <button onClick={()=>setObjectPoints([])}>Clear Object</button>
+          </>}
+        </section>}
       </aside>
 
       <div className="measure-photo-stage" onClick={clickImage}>
         <img src={imageUrl}/>
         <svg viewBox="0 0 100 100" preserveAspectRatio="none">
-          {referencePoints.length>1&&<line x1={referencePoints[0].x} y1={referencePoints[0].y} x2={referencePoints[1].x} y2={referencePoints[1].y} className="ref-line"/>}
-          {referencePoints.map((p,i)=><circle key={"r"+i} cx={p.x} cy={p.y} r=".7" className="ref-point"/>)}
-          {measurePoints.length>1&&<polyline points={measurePoints.map(p=>p.x+","+p.y).join(" ")} className="measure-line"/>}
-          {measurePoints.map((p,i)=><circle key={"m"+i} cx={p.x} cy={p.y} r=".7" className="measure-point"/>)}
+          {referencePoints.length===2&&<line x1={referencePoints[0].x} y1={referencePoints[0].y} x2={referencePoints[1].x} y2={referencePoints[1].y} className="ref-line"/>}
+          {referencePoints.map((p,i)=><circle key={"r"+i} cx={p.x} cy={p.y} r=".35" className="ref-point"/>)}
+          {sections.map((s,si)=><g key={s.id}><polyline points={s.points.map(p=>p.x+","+p.y).join(" ")} className="measure-line saved"/><text x={midPoint(s.points).x} y={midPoint(s.points).y} className="measure-label">{lineFeet(s.points).toFixed(1)} ft</text></g>)}
+          {activePoints.length>1&&<><polyline points={activePoints.map(p=>p.x+","+p.y).join(" ")} className="measure-line"/><text x={midPoint(activePoints).x} y={midPoint(activePoints).y} className="measure-label live">{activeFeet.toFixed(1)} ft</text></>}
+          {activePoints.map((p,i)=><circle key={"a"+i} cx={p.x} cy={p.y} r=".28" className="measure-point"/>)}
+          {objectPoints.length===2&&<><rect x={Math.min(objectPoints[0].x,objectPoints[1].x)} y={Math.min(objectPoints[0].y,objectPoints[1].y)} width={Math.abs(objectPoints[1].x-objectPoints[0].x)} height={Math.abs(objectPoints[1].y-objectPoints[0].y)} className="object-box"/><text x={(objectPoints[0].x+objectPoints[1].x)/2} y={Math.min(objectPoints[0].y,objectPoints[1].y)-1} className="measure-label live">{objectDims?objectDims.height.toFixed(1)+"h × "+objectDims.width.toFixed(1)+"w":""}</text></>}
+          {objectPoints.map((p,i)=><circle key={"o"+i} cx={p.x} cy={p.y} r=".28" className="object-point"/>)}
         </svg>
-        <div className="photo-hint">{mode==="reference"?"Click both edges of the "+selectedRef.label.toLowerCase():pixelsPerFoot?"Click each corner/turn. Finish when complete.":"Set a reference first."}</div>
+        <div className="photo-hint">{mode==="reference"?"Click both edges of the "+selectedRef.label.toLowerCase():mode==="object"?"Click opposite corners of the "+objectKind.toLowerCase():activePoints.length?"Keep tracing or choose New Section":"Click the first point of this section"}</div>
       </div>
     </div>}
   </div>
 }
-function targetLabel(v:MeasureField){return ({roofFt:"Roofline",ridgeFt:"Ridgeline",groundFt:"Ground stakes",garageFt:"Garage outline",windowFt:"Window outline",bushFt:"Bush / garden"} as Record<MeasureField,string>)[v]}
+function targetLabel(v:MeasureField){return ({roofFt:"Roofline",ridgeFt:"Ridgeline",groundFt:"Ground / garden-bed C9",garageFt:"Garage outline",windowFt:"Window outline",bushFt:"Garden / bed"} as Record<MeasureField,string>)[v]}
+function midPoint(points:DrawPoint[]){if(!points.length)return{x:50,y:50};const i=Math.floor(points.length/2);if(points.length%2)return points[i];return{x:(points[i-1].x+points[i].x)/2,y:(points[i-1].y+points[i].y)/2}}
 function distance(a:{x:number;y:number},b:{x:number;y:number}){return Math.hypot(b.x-a.x,b.y-a.y)}
 
 function ProjectGroup({title,tone,projects,onAction}:{title:string;tone:string;projects:Project[];onAction:(p:Project,a:string)=>void}){
