@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 type Service = "Christmas" | "Permanent";
 type Status = "New Estimate" | "Quote Approved" | "Quote Not Approved";
 type LandscapeItem = { id:string; type:"Palm"|"Tree"|"Bush"|"Column"; preset:string; count:number; strandsEach:number };
-type DecorItem = { id:string; type:"Wreath"|"Garland"|"Snowflake"|"Tree Drop"|"Ground Stakes"; preset:string; count:number; amount:number };
+type DecorItem = { id:string; type:"Wreath"|"Garland"|"Snowflake"|"Teardrop"|"Ground Stakes"; preset:string; count:number; amount:number };
 type Tab = "new" | "quote" | "measure" | "projects" | "inventory" | "purchasing";
 type POStatus = "Draft" | "Ordered" | "Partially Received" | "Received" | "Cancelled";
 type POLine = { key:string; quantity:number; unitCost:number; received:number };
@@ -143,6 +143,7 @@ export default function App(){
   const [poLineKey,setPoLineKey]=useState("c9Sun");
   const [poLineQty,setPoLineQty]=useState(500);
   const [poLines,setPoLines]=useState<POLine[]>([]);
+  const [landscapeType,setLandscapeType]=useState<LandscapeItem["type"]>("Palm");
   const [landscapePreset,setLandscapePreset]=useState("Small Palm");
   const [landscapeCount,setLandscapeCount]=useState(1);
   const [decorType,setDecorType]=useState<DecorItem["type"]>("Wreath");
@@ -298,7 +299,7 @@ export default function App(){
 
   function addLandscape(){
     const preset=LANDSCAPE_PRESETS[landscapePreset]; if(!preset||landscapeCount<=0)return;
-    const item:LandscapeItem={id:uid(),type:preset.type,preset:landscapePreset,count:landscapeCount,strandsEach:preset.strands};
+    const item:LandscapeItem={id:uid(),type:landscapeType,preset:landscapePreset,count:landscapeCount,strandsEach:preset.strands};
     setProject(p=>({...p,landscapeItems:[...(p.landscapeItems||[]),item],updatedAt:new Date().toISOString()}));
   }
   function updateLandscape(id:string,patch:Partial<LandscapeItem>){
@@ -449,53 +450,72 @@ export default function App(){
 
       {tab==="quote"&&<section className="page">
         <div className="page-head blue-head">
-          <div><span className="eyebrow">Quote Builder · {project.customer||"Current project"}</span><h1>Build only what this customer needs.</h1><p>Property sets the difficulty. Lighting scope comes next. Landscape and décor stay optional until you add them.</p></div>
+          <div><span className="eyebrow">Quote Builder · {project.customer||"Current project"}</span><h1>Build the scope without the noise.</h1><p>Property first, then lighting and landscape, then décor. Pricing and Jobber notes stay on the final estimate step.</p></div>
           <div className="head-actions"><span className={"status-pill "+project.status.toLowerCase().replaceAll(" ","-")}>{project.status}</span><button className="primary" onClick={()=>saveProject(step===4)}>{savedFlash||(step===4?"Save Project":"Save Draft")}</button></div>
         </div>
 
         <div className="stepper four-steps">
           <StepDot n={1} label="Property" active={step===1} done={step>1} onClick={()=>setStep(1)}/>
-          <StepDot n={2} label="Lighting Scope" active={step===2} done={step>2} onClick={()=>setStep(2)}/>
-          <StepDot n={3} label="Landscape" active={step===3} done={step>3} onClick={()=>setStep(3)}/>
-          <StepDot n={4} label="Décor & Add-ons" active={step===4} done={false} onClick={()=>setStep(4)}/>
+          <StepDot n={2} label="Lighting & Landscape" active={step===2} done={step>2} onClick={()=>setStep(2)}/>
+          <StepDot n={3} label="Décor & Add-ons" active={step===3} done={step>3} onClick={()=>setStep(3)}/>
+          <StepDot n={4} label="Project Estimate" active={step===4} done={false} onClick={()=>setStep(4)}/>
         </div>
 
         <div className={"wizard-card step-"+step}>
           {step===1&&<>
-            <div className="section-title"><span>1</span><div><h2>Property</h2><p>These answers create a pricing suggestion and determine the right hardware. They do not lock your selling price.</p></div></div>
+            <div className="section-title"><span>1</span><div><h2>Property</h2><p>Property conditions drive the suggested roofline rate and the expected hardware.</p></div></div>
             <div className="form-grid two">
-              <Field label="Stories" hint="Choose the highest level that contains the lighting scope, not the total floors of the home."><select className="input" value={project.stories} onChange={e=>set("stories",+e.target.value)}><option value={1}>1 story</option><option value={2}>2 stories</option><option value={3}>3 stories</option></select></Field>
+              <Field label="Stories" hint="Choose the highest level that contains the lighting scope."><select className="input" value={project.stories} onChange={e=>set("stories",+e.target.value)}><option value={1}>1 story</option><option value={2}>2 stories</option><option value={3}>3 stories</option></select></Field>
               <Field label="Roof surface"><select className="input" value={project.roofSurface} onChange={e=>set("roofSurface",e.target.value)}><option>Shingle</option><option>Tile</option><option>Metal</option><option>Mixed / Other</option></select></Field>
               <div className="field complexity-field"><span>Roofline complexity</span>
                 <div className="complexity-grid">{COMPLEXITY_GUIDE.map(item=><button type="button" key={item.key} className={"complexity-option "+(project.complexity===item.key?"selected":"")} onClick={()=>set("complexity",item.key)}>
                   <RoofSketch kind={item.key}/><b>{item.title}</b><small>{item.note}</small>
                 </button>)}</div>
               </div>
-              <Field label="Access" hint="Standard = normal ladder access. Difficult/steep = slower setup or roof movement. Special equipment = lift or unusual access."><select className="input" value={project.access} onChange={e=>set("access",e.target.value)}><option>Standard ladder access</option><option>Difficult / steep</option><option>Special equipment</option></select></Field>
+              <Field label="Access" hint="Use difficult/steep or special equipment only when access actually changes production time."><select className="input" value={project.access} onChange={e=>set("access",e.target.value)}><option>Standard ladder access</option><option>Difficult / steep</option><option>Special equipment</option></select></Field>
             </div>
             {project.service==="Christmas"&&<div className="rate-display suggestion-rate"><span>Suggested roofline rate</span><strong>{money(estimate.suggestedRoofRate)}/ft</strong><small>Suggestion only. Simple 1-story starts at $8/ft.</small></div>}
           </>}
 
           {step===2&&project.service==="Christmas"&&<>
-            <div className="section-title"><span>2</span><div><h2>Lighting Scope</h2><p>Start with the core lighting. A roofline-only customer can finish this step without seeing every optional product.</p></div></div>
-            <div className="form-grid three">
-              <Field label="Main roofline · ft"><input className="input" type="number" min="0" value={project.roofFt} onChange={e=>set("roofFt",+e.target.value)}/></Field>
-              <Field label="Selling rate · $/ft" hint={"Property suggestion: "+money(estimate.suggestedRoofRate)+"/ft"}><input className="input" type="number" min="0" step=".25" value={project.roofRate} onChange={e=>set("roofRate",+e.target.value)}/></Field>
-              <Field label="C9 color / pattern"><select className="input" value={project.c9Color} onChange={e=>set("c9Color",e.target.value)}>{["Sun Warm White","Pure White","Cool White","Red","Green","Red / Green","Multicolor","Blue","Pink","Purple","Yellow"].map(x=><option key={x}>{x}</option>)}</select></Field>
-            </div>
-            <details className="optional-scope">
-              <summary>+ Add another C9 area</summary>
+            <div className="section-title"><span>2</span><div><h2>Lighting & Landscape</h2><p>Build the actual scope. Everything is optional except what the customer is buying.</p></div></div>
+            <section className="scope-block">
+              <div className="scope-block-head"><h3>C9 Lighting</h3><button className="measure-link compact" onClick={()=>setTab("measure")}>Use Measurements</button></div>
               <div className="form-grid three">
-                <Field label="Ridgeline · ft"><input className="input" type="number" min="0" value={project.ridgeFt} onChange={e=>set("ridgeFt",+e.target.value)}/></Field>
-                <Field label="Garage / architectural outline · ft"><input className="input" type="number" min="0" value={project.garageFt} onChange={e=>set("garageFt",+e.target.value)}/></Field>
-                <Field label="Window outline · ft"><input className="input" type="number" min="0" value={project.windowFt} onChange={e=>set("windowFt",+e.target.value)}/></Field>
+                <Field label="Roofline · ft"><input className="input" type="number" min="0" value={project.roofFt} onChange={e=>set("roofFt",+e.target.value)}/></Field>
+                <Field label="Selling rate · $/ft" hint={"Suggested "+money(estimate.suggestedRoofRate)+"/ft"}><input className="input" type="number" min="0" step=".25" value={project.roofRate} onChange={e=>set("roofRate",+e.target.value)}/></Field>
+                <Field label="Color / pattern"><select className="input" value={project.c9Color} onChange={e=>set("c9Color",e.target.value)}>{["Sun Warm White","Pure White","Cool White","Red","Green","Red / Green","Multicolor","Blue","Pink","Purple","Yellow"].map(x=><option key={x}>{x}</option>)}</select></Field>
               </div>
-            </details>
-            <div className="live-calc blue-strip"><b>{project.roofFt} ft roofline</b> at 15-inch spacing = <b>{Math.ceil(project.roofFt/1.25)} C9 bulbs</b>. Current selling rate: <b>{money(project.roofRate)}/ft</b>.</div>
+              <details className="optional-scope">
+                <summary>+ Add another C9 area</summary>
+                <div className="form-grid three">
+                  <Field label="Ridgeline · ft"><input className="input" type="number" min="0" value={project.ridgeFt} onChange={e=>set("ridgeFt",+e.target.value)}/></Field>
+                  <Field label="Garden bed / ground C9 · ft"><input className="input" type="number" min="0" value={project.groundFt} onChange={e=>set("groundFt",+e.target.value)}/></Field>
+                  <Field label="Garage / architecture · ft"><input className="input" type="number" min="0" value={project.garageFt} onChange={e=>set("garageFt",+e.target.value)}/></Field>
+                  <Field label="Window outline · ft"><input className="input" type="number" min="0" value={project.windowFt} onChange={e=>set("windowFt",+e.target.value)}/></Field>
+                </div>
+              </details>
+            </section>
+
+            <section className="scope-block">
+              <div className="scope-block-head"><div><h3>Landscape Mini Lights</h3><p>Choose the object first, then its size.</p></div></div>
+              <div className="landscape-builder">
+                <Field label="Object"><select className="input" value={landscapeType} onChange={e=>{const t=e.target.value as LandscapeItem["type"];setLandscapeType(t);setLandscapePreset(defaultLandscapePreset(t))}}><option>Palm</option><option>Tree</option><option>Bush</option><option>Column</option></select></Field>
+                <Field label="Size"><select className="input" value={landscapePreset} onChange={e=>setLandscapePreset(e.target.value)}>{landscapePresetsFor(landscapeType).map(x=><option key={x} value={x}>{landscapeSizeLabel(x)}</option>)}</select></Field>
+                <Field label="Qty"><input className="input" type="number" min="1" value={landscapeCount} onChange={e=>setLandscapeCount(+e.target.value)}/></Field>
+                <button className="primary" onClick={addLandscape}>Add</button>
+              </div>
+              <div className="size-reference">{landscapeSizeReference(landscapePreset)}</div>
+              {(project.landscapeItems||[]).length>0&&<div className="selected-items">{(project.landscapeItems||[]).map(item=><article className="selected-item compact-selected" key={item.id}>
+                <div><small>{item.type}</small><h3>{item.preset}</h3></div>
+                <span>{item.count} × {item.strandsEach} strands</span><b>{item.count*item.strandsEach} total</b>
+                <button className="danger-link" onClick={()=>removeLandscape(item.id)}>Remove</button>
+              </article>)}</div>}
+            </section>
           </>}
 
           {step===2&&project.service==="Permanent"&&<>
-            <div className="section-title"><span>2</span><div><h2>Permanent Lighting Scope</h2><p>Exact footage only. No automatic cut or waste allowance.</p></div></div>
+            <div className="section-title"><span>2</span><div><h2>Permanent Lighting Scope</h2><p>Permanent uses exact measured footage with no automatic waste allowance.</p></div></div>
             <div className="form-grid three">
               <Field label="Measured footage"><input className="input" type="number" min="0" value={project.permanentFt} onChange={e=>set("permanentFt",+e.target.value)}/></Field>
               <Field label="Coverage"><select className="input" value={project.permanentCoverage} onChange={e=>set("permanentCoverage",e.target.value)}><option>Front Only</option><option>Front & Sides</option><option>All Around</option></select></Field>
@@ -504,61 +524,43 @@ export default function App(){
           </>}
 
           {step===3&&<>
-            <div className="section-title"><span>3</span><div><h2>Landscape</h2><p>Nothing appears here unless you add it. Presets auto-calculate mini strands and remain editable.</p></div></div>
-            <div className="add-item-row">
-              <Field label="Add landscape item"><select className="input" value={landscapePreset} onChange={e=>setLandscapePreset(e.target.value)}>{Object.keys(LANDSCAPE_PRESETS).map(x=><option key={x}>{x}</option>)}</select></Field>
-              <Field label="Quantity"><input className="input" type="number" min="1" value={landscapeCount} onChange={e=>setLandscapeCount(+e.target.value)}/></Field>
-              <button className="primary" onClick={addLandscape}>Add</button>
-            </div>
-            <div className="selected-items">
-              {(project.landscapeItems||[]).length===0?<div className="quiet-empty">No landscape lighting added.</div>:(project.landscapeItems||[]).map(item=><article className="selected-item" key={item.id}>
-                <div><small>{item.type}</small><h3>{item.preset}</h3></div>
-                <Field label="Qty"><input className="input" type="number" min="1" value={item.count} onChange={e=>updateLandscape(item.id,{count:+e.target.value})}/></Field>
-                <Field label="Strands each"><input className="input" type="number" min="0" value={item.strandsEach} onChange={e=>updateLandscape(item.id,{strandsEach:+e.target.value})}/></Field>
-                <b>{item.count*item.strandsEach} strands</b>
-                <button className="danger-link" onClick={()=>removeLandscape(item.id)}>Remove</button>
-              </article>)}
-            </div>
-            <button className="measure-link" onClick={()=>setTab("measure")}>Need a more accurate tree/column/bush measurement? Open Measurements →</button>
-          </>}
-
-          {step===4&&<>
-            <div className="section-title"><span>4</span><div><h2>Décor & Add-ons</h2><p>Add only what the customer wants. A roofline-only job can leave this completely empty.</p></div></div>
+            <div className="section-title"><span>3</span><div><h2>Décor & Add-ons</h2><p>Add only what is actually included. Leave this blank for a lighting-only project.</p></div></div>
             <div className="add-item-row decor-add-row">
-              <Field label="Add-on"><select className="input" value={decorType} onChange={e=>{const t=e.target.value as DecorItem["type"];setDecorType(t);if(t==="Wreath")setDecorPreset("48 in");if(t==="Garland")setDecorAmount(9);if(t==="Ground Stakes")setDecorAmount(25)}}><option>Wreath</option><option>Garland</option><option>Snowflake</option><option>Tree Drop</option><option>Ground Stakes</option></select></Field>
+              <Field label="Add-on"><select className="input" value={decorType} onChange={e=>{const t=e.target.value as DecorItem["type"];setDecorType(t);if(t==="Wreath")setDecorPreset("48 in");if(t==="Garland")setDecorAmount(9);if(t==="Ground Stakes")setDecorAmount(25)}}><option>Wreath</option><option>Garland</option><option>Snowflake</option><option>Teardrop</option><option>Ground Stakes</option></select></Field>
               {decorType==="Wreath"&&<Field label="Size"><select className="input" value={decorPreset} onChange={e=>setDecorPreset(e.target.value)}><option>36 in</option><option>48 in</option><option>60 in</option></select></Field>}
-              {(decorType==="Garland"||decorType==="Ground Stakes")&&<Field label={decorType==="Garland"?"Length · ft":"Length · ft"}><input className="input" type="number" min="0" value={decorAmount} onChange={e=>setDecorAmount(+e.target.value)}/></Field>}
+              {(decorType==="Garland"||decorType==="Ground Stakes")&&<Field label="Length · ft"><input className="input" type="number" min="0" value={decorAmount} onChange={e=>setDecorAmount(+e.target.value)}/></Field>}
               {!(decorType==="Garland"||decorType==="Ground Stakes")&&<Field label="Quantity"><input className="input" type="number" min="1" value={decorCount} onChange={e=>setDecorCount(+e.target.value)}/></Field>}
               <button className="primary" onClick={addDecor}>Add</button>
             </div>
-            <div className="selected-items">
-              {(project.decorItems||[]).length===0?<div className="quiet-empty">No décor or add-ons added.</div>:(project.decorItems||[]).map(item=><article className="selected-item decor-item" key={item.id}>
-                <div><small>{item.type}</small><h3>{item.type==="Wreath"?item.preset:item.type}</h3></div>
-                <b>{item.type==="Garland"||item.type==="Ground Stakes"?item.amount+" ft":item.count+" ×"}</b>
-                <button className="danger-link" onClick={()=>removeDecor(item.id)}>Remove</button>
-              </article>)}
-            </div>
+            {(project.decorItems||[]).length===0?<div className="quiet-empty">No décor or add-ons added.</div>:<div className="selected-items">{(project.decorItems||[]).map(item=><article className="selected-item decor-item" key={item.id}>
+              <div><small>{item.type}</small><h3>{item.type==="Wreath"?item.preset:item.type}</h3></div>
+              <b>{item.type==="Garland"||item.type==="Ground Stakes"?item.amount+" ft":item.count+" ×"}</b>
+              <button className="danger-link" onClick={()=>removeDecor(item.id)}>Remove</button>
+            </article>)}</div>}
+          </>}
 
-            <div className="quote-summary-inline">
-              <Metric label="Suggested pre-tax price" value={money(estimate.selling)} tone="blue"/>
-              <Metric label={"Estimated tax "+(project.taxRate||0).toFixed(1)+"%"} value={money(estimate.selling*(project.taxRate||0)/100)} tone="orange"/>
-              <Metric label="Material cost" value={money(estimate.material)} tone="purple"/>
-              <Metric label="Gross profit" value={money(estimate.gp)} tone="green"/>
-              <Metric label="Gross margin" value={estimate.gm.toFixed(1)+"%"} tone="green"/>
-              <Metric label="Inventory shortages" value={String(shortages.length)} tone={shortages.length?"red":"green"}/>
+          {step===4&&<>
+            <div className="section-title"><span>4</span><div><h2>Project Estimate</h2><p>Review the numbers and copy the final Jobber note. No scope editing is needed here.</p></div></div>
+            <div className="estimate-summary-clean">
+              <div><span>Pre-tax price</span><b>{money(estimate.selling)}</b></div>
+              <div><span>Estimated tax · {(project.taxRate||0).toFixed(1)}%</span><b>{money(estimate.selling*(project.taxRate||0)/100)}</b></div>
+              <div><span>Customer total</span><b>{money(estimate.selling*(1+(project.taxRate||0)/100))}</b></div>
+              <div><span>Material cost</span><b>{money(estimate.material)}</b></div>
+              <div><span>Gross profit</span><b>{money(estimate.gp)}</b></div>
+              <div><span>Gross margin</span><b>{estimate.gm.toFixed(1)}%</b></div>
             </div>
             {shortages.length>0&&<div className="warning-box red-box"><b>Inventory shortage:</b> {shortages.map(([k,u])=>INV[k]?.name+" ("+qty(u-availability(k).available)+" short)").join(", ")}</div>}
-            <div className="review-actions"><button className="primary" onClick={()=>saveProject(true)}>{savedFlash||"Save Project"}</button></div>
             <div className="inline-jobber">
-              <div className="inline-jobber-head"><div><span className="eyebrow">Jobber note</span><h3>Ready to paste</h3></div><button onClick={()=>navigator.clipboard.writeText(handoff)}>Copy note</button></div>
-              <textarea className="handoff compact" readOnly value={handoff} rows={12}/>
+              <div className="inline-jobber-head"><div><span className="eyebrow">Jobber note</span><h3>Scope-aware install note</h3></div><button onClick={()=>navigator.clipboard.writeText(handoff)}>Copy note</button></div>
+              <textarea className="handoff compact" readOnly value={handoff} rows={14}/>
             </div>
+            <div className="review-actions"><button className="primary" onClick={()=>saveProject(true)}>{savedFlash||"Save Project"}</button></div>
           </>}
 
           <div className="wizard-actions">
             <button disabled={step===1} onClick={()=>setStep(s=>Math.max(1,s-1))}>← Back</button>
             <span>Step {step} of 4</span>
-            <button className="primary" disabled={step===4} onClick={()=>setStep(s=>Math.min(4,s+1))}>Next →</button>
+            {step<4?<button className="primary" onClick={()=>setStep(s=>Math.min(4,s+1))}>Next →</button>:<button className="primary" onClick={()=>saveProject(true)}>Save Project</button>}
           </div>
         </div>
       </section>}
@@ -985,6 +987,31 @@ function taxCountyNote(city:string){
   if(r===7.5)return "6% Florida + 1.5% county surtax suggestion";
   return "Base Florida rate only — verify exact county/address";
 }
+function defaultLandscapePreset(type:LandscapeItem["type"]){
+  return type==="Palm"?"Small Palm":type==="Tree"?"Small Tree":type==="Bush"?"Small Bush":"Small Column";
+}
+function landscapePresetsFor(type:LandscapeItem["type"]){
+  return Object.keys(LANDSCAPE_PRESETS).filter(k=>LANDSCAPE_PRESETS[k].type===type);
+}
+function landscapeSizeLabel(preset:string){return preset.replace(/ Palm| Tree| Bush| Column/,"")}
+function landscapeSizeReference(preset:string){
+  const refs:Record<string,string>={
+    "Small Palm":"Small · up to about 6 ft of trunk wrap · 4 strands",
+    "Standard Palm":"Standard · about 6–12 ft of trunk wrap · 10 strands",
+    "Large Palm":"Large · over about 12 ft of trunk wrap · 16 strands · verify photo/field dimensions",
+    "Small Tree":"Small · compact trunk/branch scope · 6 strands",
+    "Standard Tree":"Standard · typical front-yard feature tree · 12 strands",
+    "Large Tree":"Large · broad/tall tree or heavier branch scope · 20 strands · verify dimensions",
+    "Small Bush":"Small · individual compact shrub · 1 strand",
+    "Standard Bush":"Standard · typical foundation shrub · 2 strands",
+    "Large Bush":"Large · wide/deep shrub mass · 4 strands · verify dimensions",
+    "Small Column":"Small · narrow entry post · 2 strands",
+    "Standard Column":"Standard · typical porch column · 4 strands",
+    "Large Column":"Large · wide/tall pillar · 6 strands · verify circumference"
+  };
+  return refs[preset]||"";
+}
+
 const LANDSCAPE_PRESETS:Record<string,{type:LandscapeItem["type"];strands:number}> = {
   "Small Palm":{type:"Palm",strands:4},"Standard Palm":{type:"Palm",strands:10},"Large Palm":{type:"Palm",strands:16},
   "Small Tree":{type:"Tree",strands:6},"Standard Tree":{type:"Tree",strands:12},"Large Tree":{type:"Tree",strands:20},
