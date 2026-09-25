@@ -156,6 +156,8 @@ export default function App(){
   const [receiptMessage,setReceiptMessage]=useState("");
   const [projectServiceView,setProjectServiceView]=useState<Service>("Christmas");
   const [draftsOnly,setDraftsOnly]=useState(false);
+  const [procurementView,setProcurementView]=useState<"recommended"|"create">("recommended");
+  const [poCreateMode,setPoCreateMode]=useState<"manual"|"upload">("manual");
 
   useEffect(()=>{localStorage.setItem(STORAGE,JSON.stringify(projects))},[projects]);
   useEffect(()=>{localStorage.setItem(PO_STORAGE,JSON.stringify(purchaseOrders))},[purchaseOrders]);
@@ -658,78 +660,64 @@ export default function App(){
       </section>}
 
       {tab==="purchasing"&&<section className="page">
-        <div className="page-head orange-head"><div><span className="eyebrow">Procurement & purchase orders</span><h1>Turn inventory needs into controlled purchasing.</h1><p>Create POs, track what was ordered, receive stock, and let incoming inventory affect purchasing decisions.</p></div></div>
+        <div className="page-head orange-head"><div><span className="eyebrow">Procurement</span><h1>Buy what is needed. Receive what arrives.</h1><p>Two jobs only: see what should be purchased, or create/receive a purchase order.</p></div></div>
 
-        <section className="receipt-import">
-          <div className="section-title"><span>R</span><div><h2>Receive from Receipt</h2><p>Upload a clear receipt photo. The app reads likely inventory items, lets you verify quantities, then receives them into stock.</p></div></div>
-          <div className="receipt-upload-row">
-            <input className="input" type="file" accept="image/png,image/jpeg,image/webp,image/avif" disabled={receiptBusy} onChange={e=>{const f=e.target.files?.[0];if(f)importReceipt(f)}}/>
-            <span>{receiptBusy?"Reading…":receiptMessage}</span>
-          </div>
-          {receiptLines.length>0&&<div className="receipt-matches">
-            <div className="receipt-supplier"><Field label="Detected supplier"><input className="input" value={receiptSupplier} onChange={e=>setReceiptSupplier(e.target.value)}/></Field></div>
-            {receiptLines.map((line,idx)=><div className="receipt-line" key={line.key}>
-              <span>{INV[line.key]?.name}</span>
-              <input className="input" type="number" min="0" value={line.quantity} onChange={e=>setReceiptLines(lines=>lines.map((l,i)=>i===idx?{...l,quantity:+e.target.value}:l))}/>
-              <span>{INV[line.key]?.unit}</span>
-              <button className="danger-link" onClick={()=>setReceiptLines(lines=>lines.filter((_,i)=>i!==idx))}>Remove</button>
-            </div>)}
-            <button className="primary" onClick={confirmReceipt}>Confirm & Receive Inventory</button>
-          </div>}
-        </section>
+        <div className="procurement-tabs">
+          <button className={procurementView==="recommended"?"active":""} onClick={()=>setProcurementView("recommended")}>Recommended Buys</button>
+          <button className={procurementView==="create"?"active":""} onClick={()=>setProcurementView("create")}>Create Purchase Order</button>
+        </div>
 
-        <div className="procurement-layout">
-          <section className="po-builder">
-            <div className="section-title"><span>PO</span><div><h2>Create purchase order</h2><p>Build an order by supplier, add SKUs, then move it from Draft → Ordered → Received.</p></div></div>
+        {procurementView==="recommended"&&<section className="procurement-panel">
+          <div className="section-title"><span>!</span><div><h2>Recommended Buys</h2><p>Recommendations use available inventory plus incoming purchase orders.</p></div></div>
+          <div className="purchase-grid compact">{Object.entries(INV).map(([k,item])=>{
+            const a=availability(k);if(!item.reorder||a.projected>=item.reorder||item.legacy)return null;
+            let buy=Math.max(item.reorder*2-a.projected,0);
+            if(item.purchaseTier)buy=Math.ceil(buy/item.purchaseTier)*item.purchaseTier;
+            if(k.startsWith("c9")&&item.unit==="bulbs")buy=Math.ceil(buy/500)*500;
+            if(k.startsWith("clip"))buy=Math.ceil(buy/500)*500;
+            return <article className="purchase-card" key={k}><span>{item.supplier}</span><h3>{item.name}</h3><strong>Buy {qty(buy)} {item.unit}</strong><p>Projected stock: {qty(a.projected)}</p><p>{item.cost?"Estimated "+money(buy*item.cost):"Cost not configured"}</p><button onClick={()=>{setPoSupplier(item.supplier||"Other");setPoLineKey(k);setPoLineQty(buy);setProcurementView("create");setPoCreateMode("manual")}}>Create PO</button></article>
+          })}</div>
+        </section>}
+
+        {procurementView==="create"&&<section className="procurement-panel">
+          <div className="section-title"><span>PO</span><div><h2>Create Purchase Order</h2><p>Create it manually or upload a receipt/file and verify the matched inventory before receiving.</p></div></div>
+          <div className="po-create-tabs"><button className={poCreateMode==="manual"?"active":""} onClick={()=>setPoCreateMode("manual")}>Create Manually</button><button className={poCreateMode==="upload"?"active":""} onClick={()=>setPoCreateMode("upload")}>Upload Receipt / File</button></div>
+
+          {poCreateMode==="manual"?<div className="po-builder simple-po-builder">
             <div className="form-grid three">
               <Field label="Supplier"><select className="input" value={poSupplier} onChange={e=>setPoSupplier(e.target.value)}>{suppliers.map(s=><option key={s}>{s}</option>)}</select></Field>
               <Field label="Expected date"><input className="input" type="date" value={poExpectedDate} onChange={e=>setPoExpectedDate(e.target.value)}/></Field>
-              <Field label="Notes"><input className="input" value={poNotes} onChange={e=>setPoNotes(e.target.value)} placeholder="Season stock-up, emergency fill, etc."/></Field>
+              <Field label="Notes"><input className="input" value={poNotes} onChange={e=>setPoNotes(e.target.value)} placeholder="Optional"/></Field>
             </div>
             <div className="po-line-builder">
               <select className="input" value={poLineKey} onChange={e=>setPoLineKey(e.target.value)}>{Object.entries(INV).filter(([,i])=>!i.legacy).map(([k,i])=><option value={k} key={k}>{i.name}</option>)}</select>
               <input className="input" type="number" min="1" value={poLineQty} onChange={e=>setPoLineQty(+e.target.value)}/>
-              <button onClick={addPOLine}>+ Add line</button>
+              <button onClick={addPOLine}>Add Item</button>
             </div>
-            {poLines.length>0&&<div className="po-draft-lines">
-              {poLines.map((line,idx)=><div key={line.key}><span>{INV[line.key]?.name}</span><b>{qty(line.quantity)} {INV[line.key]?.unit}</b><span>{money(line.quantity*line.unitCost)}</span><button onClick={()=>setPoLines(lines=>lines.filter((_,i)=>i!==idx))}>Remove</button></div>)}
-              <div className="po-total"><span>Draft total</span><b>{money(poLines.reduce((s,l)=>s+l.quantity*l.unitCost,0))}</b></div>
-            </div>}
+            {poLines.length>0&&<div className="po-draft-lines">{poLines.map((line,idx)=><div key={line.key}><span>{INV[line.key]?.name}</span><b>{qty(line.quantity)} {INV[line.key]?.unit}</b><span>{money(line.quantity*line.unitCost)}</span><button onClick={()=>setPoLines(lines=>lines.filter((_,i)=>i!==idx))}>Remove</button></div>)}<div className="po-total"><span>Draft total</span><b>{money(poLines.reduce((s,l)=>s+l.quantity*l.unitCost,0))}</b></div></div>}
             <button className="primary po-create" disabled={poLines.length===0} onClick={createPO}>Create Draft PO</button>
-          </section>
+          </div>:<div className="receipt-import simplified-receipt">
+            <input className="input" type="file" accept="image/png,image/jpeg,image/webp,image/avif,application/pdf" disabled={receiptBusy} onChange={e=>{const f=e.target.files?.[0];if(f)importReceipt(f)}}/>
+            <span>{receiptBusy?"Reading file…":receiptMessage||"Upload a clear supplier receipt or image. Review every matched line before receiving."}</span>
+            {receiptLines.length>0&&<div className="receipt-matches">
+              <Field label="Supplier"><input className="input" value={receiptSupplier} onChange={e=>setReceiptSupplier(e.target.value)}/></Field>
+              {receiptLines.map((line,idx)=><div className="receipt-line" key={line.key}><span>{INV[line.key]?.name}</span><input className="input" type="number" min="0" value={line.quantity} onChange={e=>setReceiptLines(lines=>lines.map((l,i)=>i===idx?{...l,quantity:+e.target.value}:l))}/><span>{INV[line.key]?.unit}</span><button className="danger-link" onClick={()=>setReceiptLines(lines=>lines.filter((_,i)=>i!==idx))}>Remove</button></div>)}
+              <button className="primary" onClick={confirmReceipt}>Confirm & Receive Inventory</button>
+            </div>}
+          </div>}
 
-          <section className="reorder-panel">
-            <div className="section-title"><span>!</span><div><h2>Recommended buys</h2><p>Uses projected stock after open POs—not just current on-hand.</p></div></div>
-            <div className="purchase-grid compact">{Object.entries(INV).map(([k,item])=>{
-              const a=availability(k);if(!item.reorder||a.projected>=item.reorder||item.legacy)return null;
-              let buy=Math.max(item.reorder*2-a.projected,0);
-              if(item.purchaseTier)buy=Math.ceil(buy/item.purchaseTier)*item.purchaseTier;
-              if(k.startsWith("c9")&&item.unit==="bulbs")buy=Math.ceil(buy/500)*500;
-              if(k.startsWith("clip"))buy=Math.ceil(buy/500)*500;
-              return <article className="purchase-card" key={k}><span>{item.supplier}</span><h3>{item.name}</h3><strong>Buy {qty(buy)} {item.unit}</strong><p>Projected after incoming: {qty(a.projected)}</p><p>Estimated product cost: {item.cost?money(buy*item.cost):"Cost not configured"}</p><button onClick={()=>{setPoSupplier(item.supplier||"Other");setPoLineKey(k);setPoLineQty(buy)}}>Load into PO builder</button></article>
-            })}</div>
-          </section>
-        </div>
-
-        <section className="po-list-section">
-          <div className="section-title"><span>#</span><div><h2>Purchase orders</h2><p>Receiving a PO adds its received quantity into live on-hand inventory.</p></div></div>
-          {purchaseOrders.length===0?<div className="empty-state">No purchase orders yet.</div>:<div className="po-list">{purchaseOrders.map(po=>{
-            const total=po.lines.reduce((s,l)=>s+l.quantity*l.unitCost,0);
-            return <article className="po-card" key={po.id}>
-              <div className="po-card-top"><div><small>{po.supplier}</small><h3>{po.poNumber}</h3></div><span className={"po-status "+po.status.toLowerCase().replaceAll(" ","-")}>{po.status}</span><b>{money(total)}</b></div>
-              <div className="po-meta"><span>Created {new Date(po.createdAt).toLocaleDateString()}</span><span>{po.expectedDate?"Expected "+po.expectedDate:"No expected date"}</span><span>{po.lines.length} line items</span></div>
-              <div className="po-lines">{po.lines.map(l=><div key={l.key}><span>{INV[l.key]?.name}</span><b>{qty(l.received)} / {qty(l.quantity)} received</b></div>)}</div>
-              {po.notes&&<p className="po-notes">{po.notes}</p>}
-              <div className="po-actions">
-                {po.status==="Draft"&&<button onClick={()=>setPOStatus(po.id,"Ordered")}>Mark Ordered</button>}
-                {["Ordered","Partially Received"].includes(po.status)&&<button className="primary" onClick={()=>receiveAll(po.id)}>Receive All</button>}
-                {!["Received","Cancelled"].includes(po.status)&&<button onClick={()=>setPOStatus(po.id,"Cancelled")}>Cancel</button>}
-                <button className="danger-link" onClick={()=>deletePO(po.id)}>Delete</button>
-              </div>
-            </article>})}</div>}
-        </section>
+          <details className="existing-pos">
+            <summary>Purchase Orders <span>{purchaseOrders.length}</span></summary>
+            {purchaseOrders.length===0?<div className="empty-state">No purchase orders yet.</div>:<div className="po-list">{purchaseOrders.map(po=>{
+              const total=po.lines.reduce((s,l)=>s+l.quantity*l.unitCost,0);
+              return <article className="po-card" key={po.id}>
+                <div className="po-card-top"><div><small>{po.supplier}</small><h3>{po.poNumber}</h3></div><span className={"po-status "+po.status.toLowerCase().replaceAll(" ","-")}>{po.status}</span><b>{money(total)}</b></div>
+                <div className="po-meta"><span>{new Date(po.createdAt).toLocaleDateString()}</span><span>{po.lines.length} items</span></div>
+                <div className="po-actions">{po.status==="Draft"&&<button onClick={()=>setPOStatus(po.id,"Ordered")}>Mark Ordered</button>}{["Ordered","Partially Received"].includes(po.status)&&<button className="primary" onClick={()=>receiveAll(po.id)}>Receive All</button>}{!["Received","Cancelled"].includes(po.status)&&<button onClick={()=>setPOStatus(po.id,"Cancelled")}>Cancel</button>}<button className="danger-link" onClick={()=>deletePO(po.id)}>Delete</button></div>
+              </article>})}</div>}
+          </details>
+        </section>}
       </section>}
-
 
 
 
@@ -915,8 +903,8 @@ function midPoint(points:DrawPoint[]){if(!points.length)return{x:50,y:50};const 
 function distance(a:{x:number;y:number},b:{x:number;y:number}){return Math.hypot(b.x-a.x,b.y-a.y)}
 
 function ProjectGroup({title,tone,projects,onAction}:{title:string;tone:string;projects:Project[];onAction:(p:Project,a:string)=>void}){
-  return <section className={"project-group "+tone}>
-    <div className="project-group-head"><h2>{title}</h2><span>{projects.length}</span></div>
+  return <details className={"project-group collapsible "+tone}>
+    <summary className="project-group-head"><h2>{title}</h2><span>{projects.length}</span></summary>
     {projects.length===0?<div className="project-group-empty">No projects in this category.</div>:<div className="project-list">
       {projects.map(p=><article className="project-row pipeline-row" key={p.id}>
         <div className="project-main"><b>{p.customer||"Unnamed customer"}</b><span>{[p.address,p.city].filter(Boolean).join(", ")||"No address"}</span></div>
@@ -932,7 +920,7 @@ function ProjectGroup({title,tone,projects,onAction}:{title:string;tone:string;p
         </select>
       </article>)}
     </div>}
-  </section>
+  </details>
 }
 function projectActionReset(el:HTMLSelectElement){setTimeout(()=>{el.value=""},0)}
 
