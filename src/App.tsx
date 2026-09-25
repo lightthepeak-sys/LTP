@@ -1514,6 +1514,25 @@ function buildHandoff(p:Project,e:any){
     });
   }
 
+  const c9Scope=p.c9Items||[];
+  const c9FeetForSupport=c9Scope.length?c9Scope.reduce((s,i)=>s+i.feet,0):p.roofFt+p.ridgeFt+p.groundFt+p.garageFt+p.windowFt;
+  if(c9FeetForSupport>0){
+    const areaCount=c9Scope.length?c9Scope.length:1;
+    const sptFt=Math.max(CHRISTMAS_BOM.sptMinFt,c9FeetForSupport*CHRISTMAS_BOM.sptPctOfC9);
+    lines.push("","SUPPORTING ELECTRICAL / INSTALL MATERIALS");
+    lines.push("SPT extension wire: ~"+qty(sptFt)+" ft");
+    lines.push("Plugs: "+areaCount+" male + "+areaCount+" female");
+    lines.push("Timer: 1 TouchSmart digital timer");
+    lines.push("C9 planning allowance: 10% for cord/bulbs/hardware");
+  }
+
+  const wreathCount=(p.decorItems||[]).filter(i=>i.type==="Wreath").reduce((s,i)=>s+i.count,0);
+  if(wreathCount>0){
+    lines.push("","WREATH ACCESSORIES");
+    lines.push(wreathCount+" × 18-inch Minleon red/gold bow");
+    lines.push("Wreaths/greenery are pre-lit.");
+  }
+
   lines.push("","TECH: Install only the listed scope. Record actual material used and note any variance before closing the job.");
   return lines.join("\n");
 }
