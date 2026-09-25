@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 type Service = "Christmas" | "Permanent";
-type Status = "New Estimate" | "Quote Approved" | "Quote Not Approved";
+type Status = "Estimate Sent" | "Quote Approved" | "Quote Not Approved";
 type LandscapeItem = { id:string; type:"Palm"|"Tree"|"Bush"|"Column"; preset:string; count:number; strandsEach:number };
 type DecorItem = { id:string; type:"Wreath"|"Garland"|"Snowflake"|"Teardrop"|"Ground Stakes"; preset:string; count:number; amount:number };
 type Tab = "new" | "quote" | "measure" | "projects" | "inventory" | "purchasing";
@@ -18,7 +18,7 @@ type Project = {
   stories:number; roofSurface:string; complexity:string; access:string;
   bushFt:number; bushStrandsOverride:number; palmStrands:number; treeStrands:number; columnStrands:number;
   wreathSize:number; wreathQty:number; garlandFt:number; snowflakes:number; treeDrops:number;
-  roofRate:number; permanentFt:number; permanentCoverage:string; permanentRate:number;
+  roofRate:number; permanentFt:number; permanentCoverage:string; permanentRate:number; permanentFrontFt:number; permanentFrontSidesFt:number; permanentAllAroundFt:number;
   landscapeItems?:LandscapeItem[]; decorItems?:DecorItem[]; quoteComplete?:boolean; draftStep?:number;
 };
 
@@ -102,12 +102,12 @@ const REFERENCE_PRESETS=[
 
 
 const emptyProject=():Project=>({
-  id:uid(),updatedAt:new Date().toISOString(),customer:"",address:"",city:"",taxRate:0,service:"Christmas",status:"New Estimate",
+  id:uid(),updatedAt:new Date().toISOString(),customer:"",address:"",city:"",taxRate:0,service:"Christmas",status:"Estimate Sent",
   roofFt:0,ridgeFt:0,groundFt:0,garageFt:0,windowFt:0,c9Color:"Sun Warm White",
   stories:1,roofSurface:"Shingle",complexity:"Straight / simple",access:"Standard ladder access",
   bushFt:0,bushStrandsOverride:0,palmStrands:0,treeStrands:0,columnStrands:0,
   wreathSize:48,wreathQty:0,garlandFt:0,snowflakes:0,treeDrops:0,
-  roofRate:8,permanentFt:0,permanentCoverage:"Front Only",permanentRate:35,landscapeItems:[],decorItems:[],quoteComplete:false,draftStep:0
+  roofRate:8,permanentFt:0,permanentCoverage:"Front Only",permanentRate:35,permanentFrontFt:0,permanentFrontSidesFt:0,permanentAllAroundFt:0,landscapeItems:[],decorItems:[],quoteComplete:false,draftStep:0
 });
 
 function loadProjects():Project[]{
@@ -166,10 +166,17 @@ export default function App(){
 
   const estimate=useMemo(()=>{
     if(project.service==="Permanent"){
-      const sell=project.permanentFt*project.permanentRate;
+      const front=project.permanentFrontFt||0;
+      const frontSides=project.permanentFrontSidesFt||0;
+      const allAround=project.permanentAllAroundFt||0;
+      const frontSell=front*project.permanentRate;
+      const frontSidesSell=frontSides*project.permanentRate;
+      const allAroundSell=allAround*project.permanentRate;
+      const sell=frontSell;
       const material=0;
-      return {selling:sell,material,gp:sell-material,gm:sell?sell?((sell-material)/sell)*100:0:0,roofRate:0,suggestedRoofRate:0,
-        roofBulbs:0,ridgeBulbs:0,groundBulbs:0,bushStrands:0,miniStrands:0};
+      return {selling:sell,material,gp:sell-material,gm:sell?((sell-material)/sell)*100:0,roofRate:0,suggestedRoofRate:0,
+        roofBulbs:0,ridgeBulbs:0,groundBulbs:0,bushStrands:0,miniStrands:0,
+        permanentOptions:{front:{ft:front,sell:frontSell},frontSides:{ft:frontSides,sell:frontSidesSell},allAround:{ft:allAround,sell:allAroundSell}}};
     }
     let base=project.stories===1?8:project.stories===2?9:10;
     base+=complexityRates[project.complexity]||0;
@@ -208,7 +215,11 @@ export default function App(){
   },[project]);
 
   const projectUsage=(p:Project)=>{
-    if(p.service==="Permanent")return {permanent:p.permanentFt};
+    if(p.service==="Permanent"){
+      const ft=p.permanentCoverage==="All Around"?(p.permanentAllAroundFt||p.permanentFt):
+        p.permanentCoverage==="Front & Sides"?(p.permanentFrontSidesFt||p.permanentFt):(p.permanentFrontFt||p.permanentFt);
+      return {permanent:ft};
+    }
     const roofBulbs=Math.ceil((p.roofFt+p.garageFt+p.windowFt)/1.25);
     const ridgeBulbs=Math.ceil(p.ridgeFt/1.25);
     const groundBulbs=Math.ceil(p.groundFt/1.25);
@@ -285,7 +296,7 @@ export default function App(){
   });
 
   function saveProject(complete=false){
-    const next={...project,quoteComplete:complete,draftStep:complete?4:step,updatedAt:new Date().toISOString()};
+    const next={...project,status:complete&&project.status!=="Quote Approved"&&project.status!=="Quote Not Approved"?"Estimate Sent":project.status,quoteComplete:complete,draftStep:complete?(project.service==="Permanent"?3:4):step,updatedAt:new Date().toISOString()};
     setProject(next);
     setProjects(prev=>{
       const i=prev.findIndex(x=>x.id===next.id);
@@ -386,8 +397,8 @@ export default function App(){
       const next={...p,status:"Quote Not Approved" as Status,updatedAt:new Date().toISOString()};
       setProjects(prev=>prev.map(x=>x.id===p.id?next:x));if(project.id===p.id)setProject(next);return;
     }
-    if(action==="new-estimate"){
-      const next={...p,status:"New Estimate" as Status,updatedAt:new Date().toISOString()};
+    if(action==="estimate-sent"){
+      const next={...p,status:"Estimate Sent" as Status,updatedAt:new Date().toISOString()};
       setProjects(prev=>prev.map(x=>x.id===p.id?next:x));if(project.id===p.id)setProject(next);return;
     }
     if(action==="delete"){deleteProject(p.id)}
@@ -396,7 +407,7 @@ export default function App(){
   const serviceProjects=projects.filter(p=>p.service===projectServiceView);
   const approvedProjects=serviceProjects.filter(p=>p.status==="Quote Approved");
   const lostProjects=serviceProjects.filter(p=>p.status==="Quote Not Approved");
-  const openProjects=serviceProjects.filter(p=>p.status==="New Estimate");
+  const openProjects=serviceProjects.filter(p=>p.status==="Estimate Sent");
   const unfinishedProjects=serviceProjects.filter(p=>!p.quoteComplete);
   const decidedProjects=approvedProjects.length+lostProjects.length;
   const closingRate=decidedProjects?approvedProjects.length/decidedProjects*100:0;
@@ -441,7 +452,7 @@ export default function App(){
             <Field label="City"><input className="input" value={project.city||""} onChange={e=>{const city=e.target.value;setProject(p=>({...p,city,taxRate:suggestTaxRate(city),updatedAt:new Date().toISOString()}))}} /></Field>
             <Field label="Suggested sales tax"><div className="tax-suggestion"><b>{(project.taxRate||0).toFixed(1)}%</b><span>{project.city?taxCountyNote(project.city):"Enter city to suggest rate"}</span></div></Field>
             <Field label="Service"><select className="input" value={project.service} onChange={e=>set("service",e.target.value as Service)}><option>Christmas</option><option>Permanent</option></select></Field>
-            <Field label="Status"><select className="input" value={project.status} onChange={e=>set("status",e.target.value as Status)}>{["New Estimate","Quote Approved","Quote Not Approved"].map(x=><option key={x}>{x}</option>)}</select></Field>
+            <Field label="Pipeline stage"><div className="tax-suggestion"><b>Draft / Unfinished</b><span>Moves to Estimate Sent · Open when the estimate is completed.</span></div></Field>
           </div>
           <div className="new-project-actions">
             <button className="primary" onClick={()=>{saveProject(false);setTab("measure")}}>Start with Measurements</button>
@@ -453,15 +464,19 @@ export default function App(){
       {tab==="quote"&&<section className="page">
         <div className="page-head blue-head">
           <div><span className="eyebrow">Quote Builder · {project.customer||"Current project"}</span><h1>Build the scope without the noise.</h1><p>Property first, then lighting and landscape, then décor. Pricing and Jobber notes stay on the final estimate step.</p></div>
-          <div className="head-actions"><span className={"status-pill "+project.status.toLowerCase().replaceAll(" ","-")}>{project.status}</span><button className="primary" onClick={()=>saveProject(step===4)}>{savedFlash||(step===4?"Save Project":"Save Draft")}</button></div>
+          <div className="head-actions"><span className={"status-pill "+project.status.toLowerCase().replaceAll(" ","-")}>{project.status}</span><button className="primary" onClick={()=>saveProject(step===(project.service==="Permanent"?3:4))}>{savedFlash||(step===(project.service==="Permanent"?3:4)?"Save Project":"Save Draft")}</button></div>
         </div>
 
-        <div className="stepper four-steps">
+        {project.service==="Permanent"?<div className="stepper three-steps">
+          <StepDot n={1} label="Property" active={step===1} done={step>1} onClick={()=>setStep(1)}/>
+          <StepDot n={2} label="Permanent Lighting" active={step===2} done={step>2} onClick={()=>setStep(2)}/>
+          <StepDot n={3} label="Project Estimate" active={step===3} done={false} onClick={()=>setStep(3)}/>
+        </div>:<div className="stepper four-steps">
           <StepDot n={1} label="Property" active={step===1} done={step>1} onClick={()=>setStep(1)}/>
           <StepDot n={2} label="Lighting & Landscape" active={step===2} done={step>2} onClick={()=>setStep(2)}/>
           <StepDot n={3} label="Décor & Add-ons" active={step===3} done={step>3} onClick={()=>setStep(3)}/>
           <StepDot n={4} label="Project Estimate" active={step===4} done={false} onClick={()=>setStep(4)}/>
-        </div>
+        </div>}
 
         <div className={"wizard-card step-"+step}>
           {step===1&&<>
@@ -517,15 +532,19 @@ export default function App(){
           </>}
 
           {step===2&&project.service==="Permanent"&&<>
-            <div className="section-title"><span>2</span><div><h2>Permanent Lighting Scope</h2><p>Permanent uses exact measured footage with no automatic waste allowance.</p></div></div>
-            <div className="form-grid three">
-              <Field label="Measured footage"><input className="input" type="number" min="0" value={project.permanentFt} onChange={e=>set("permanentFt",+e.target.value)}/></Field>
-              <Field label="Coverage"><select className="input" value={project.permanentCoverage} onChange={e=>set("permanentCoverage",e.target.value)}><option>Front Only</option><option>Front & Sides</option><option>All Around</option></select></Field>
+            <div className="section-title"><span>2</span><div><h2>Permanent Lighting</h2><p>Capture all three coverage measurements and price all three options at once.</p></div></div>
+            <div className="permanent-measure-grid">
+              <div className="coverage-measure-card"><span>Option 1</span><h3>All Around</h3><Field label="Measured footage"><input className="input" type="number" min="0" value={project.permanentAllAroundFt||0} onChange={e=>set("permanentAllAroundFt",+e.target.value)}/></Field><b>{money((project.permanentAllAroundFt||0)*project.permanentRate)}</b></div>
+              <div className="coverage-measure-card recommended"><span>Option 2 · Recommended</span><h3>Front & Sides</h3><Field label="Measured footage"><input className="input" type="number" min="0" value={project.permanentFrontSidesFt||0} onChange={e=>set("permanentFrontSidesFt",+e.target.value)}/></Field><b>{money((project.permanentFrontSidesFt||0)*project.permanentRate)}</b></div>
+              <div className="coverage-measure-card"><span>Option 3</span><h3>Front Only</h3><Field label="Measured footage"><input className="input" type="number" min="0" value={project.permanentFrontFt||0} onChange={e=>set("permanentFrontFt",+e.target.value)}/></Field><b>{money((project.permanentFrontFt||0)*project.permanentRate)}</b></div>
+            </div>
+            <div className="form-grid two permanent-rate-row">
               <Field label="Selling rate · $/ft"><input className="input" type="number" min="0" step=".5" value={project.permanentRate} onChange={e=>set("permanentRate",+e.target.value)}/></Field>
+              <Field label="Approved coverage" hint="Only used once the customer selects an option; this drives reserved inventory."><select className="input" value={project.permanentCoverage} onChange={e=>set("permanentCoverage",e.target.value)}><option>Front Only</option><option>Front & Sides</option><option>All Around</option></select></Field>
             </div>
           </>}
 
-          {step===3&&<>
+          {step===3&&project.service==="Christmas"&&<>
             <div className="section-title"><span>3</span><div><h2>Décor & Add-ons</h2><p>Add only what is actually included. Leave this blank for a lighting-only project.</p></div></div>
             <div className="add-item-row decor-add-row">
               <Field label="Add-on"><select className="input" value={decorType} onChange={e=>{const t=e.target.value as DecorItem["type"];setDecorType(t);if(t==="Wreath")setDecorPreset("48 in");if(t==="Garland")setDecorAmount(9);if(t==="Ground Stakes")setDecorAmount(25)}}><option>Wreath</option><option>Garland</option><option>Snowflake</option><option>Teardrop</option><option>Ground Stakes</option></select></Field>
@@ -541,16 +560,20 @@ export default function App(){
             </article>)}</div>}
           </>}
 
-          {step===4&&<>
+          {((project.service==="Christmas"&&step===4)||(project.service==="Permanent"&&step===3))&&<>
             <div className="section-title"><span>4</span><div><h2>Project Estimate</h2><p>Review the numbers and copy the final Jobber note. No scope editing is needed here.</p></div></div>
-            <div className="estimate-summary-clean">
+            {project.service==="Permanent"?<div className="permanent-estimate-options">
+              <div><span>All Around</span><b>{qty(project.permanentAllAroundFt||0)} ft</b><strong>{money((project.permanentAllAroundFt||0)*project.permanentRate)}</strong></div>
+              <div className="recommended"><span>Front & Sides</span><b>{qty(project.permanentFrontSidesFt||0)} ft</b><strong>{money((project.permanentFrontSidesFt||0)*project.permanentRate)}</strong></div>
+              <div><span>Front Only</span><b>{qty(project.permanentFrontFt||0)} ft</b><strong>{money((project.permanentFrontFt||0)*project.permanentRate)}</strong></div>
+            </div>:<div className="estimate-summary-clean">
               <div><span>Pre-tax price</span><b>{money(estimate.selling)}</b></div>
               <div><span>Estimated tax · {(project.taxRate||0).toFixed(1)}%</span><b>{money(estimate.selling*(project.taxRate||0)/100)}</b></div>
               <div><span>Customer total</span><b>{money(estimate.selling*(1+(project.taxRate||0)/100))}</b></div>
               <div><span>Material cost</span><b>{money(estimate.material)}</b></div>
               <div><span>Gross profit</span><b>{money(estimate.gp)}</b></div>
               <div><span>Gross margin</span><b>{estimate.gm.toFixed(1)}%</b></div>
-            </div>
+            </div>}
             {shortages.length>0&&<div className="warning-box red-box"><b>Inventory shortage:</b> {shortages.map(([k,u])=>INV[k]?.name+" ("+qty(u-availability(k).available)+" short)").join(", ")}</div>}
             <div className="inline-jobber">
               <div className="inline-jobber-head"><div><span className="eyebrow">Jobber note</span><h3>Scope-aware install note</h3></div><button onClick={()=>navigator.clipboard.writeText(handoff)}>Copy note</button></div>
@@ -561,8 +584,8 @@ export default function App(){
 
           <div className="wizard-actions">
             <button disabled={step===1} onClick={()=>setStep(s=>Math.max(1,s-1))}>← Back</button>
-            <span>Step {step} of 4</span>
-            {step<4?<button className="primary" onClick={()=>setStep(s=>Math.min(4,s+1))}>Next →</button>:<button className="primary" onClick={()=>saveProject(true)}>Save Project</button>}
+            <span>Step {step} of {project.service==="Permanent"?3:4}</span>
+            {step<(project.service==="Permanent"?3:4)?<button className="primary" onClick={()=>setStep(s=>Math.min(project.service==="Permanent"?3:4,s+1))}>Next →</button>:<button className="primary" onClick={()=>saveProject(true)}>Save Project</button>}
           </div>
         </div>
       </section>}
@@ -589,7 +612,7 @@ export default function App(){
 
         <div className="project-metrics">
           <Metric label={projectServiceView+" estimates"} value={String(serviceProjects.length)} tone="cyan"/>
-          <Metric label="New estimates" value={String(openProjects.length)} tone="blue"/>
+          <Metric label="Estimate sent · open" value={String(openProjects.length)} tone="blue"/>
           <Metric label="Quote approved" value={String(approvedProjects.length)} tone="green"/>
           <Metric label="Quote not approved" value={String(lostProjects.length)} tone="red"/>
           <Metric label="Closing rate" value={closingRate.toFixed(1)+"%"} tone="purple"/>
@@ -597,7 +620,7 @@ export default function App(){
         </div>
 
         {serviceProjects.length===0?<div className="empty-state">No {projectServiceView} projects yet.</div>:<>
-          <ProjectGroup title="New Estimates" tone="blue" projects={visibleOpen} onAction={projectAction}/>
+          <ProjectGroup title="Estimate Sent · Open" tone="blue" projects={visibleOpen} onAction={projectAction}/>
           <ProjectGroup title="Quote Approved" tone="green" projects={visibleApproved} onAction={projectAction}/>
           <ProjectGroup title="Quote Not Approved" tone="red" projects={visibleLost} onAction={projectAction}/>
         </>}
@@ -913,7 +936,7 @@ function ProjectGroup({title,tone,projects,onAction}:{title:string;tone:string;p
         <span className={"status-pill "+p.status.toLowerCase().replaceAll(" ","-")}>{p.status}</span>
         <select className="project-action-select" defaultValue="" onChange={e=>{const a=e.target.value;projectActionReset(e.currentTarget);onAction(p,a)}}>
           <option value="" disabled>Update status…</option>
-          {p.status!=="New Estimate"&&<option value="new-estimate">Move to New Estimate</option>}
+          {p.status!=="Estimate Sent"&&<option value="estimate-sent">Move to New Estimate</option>}
           {p.status!=="Quote Approved"&&<option value="approved">Mark Quote Approved</option>}
           {p.status!=="Quote Not Approved"&&<option value="not-approved">Mark Quote Not Approved</option>}
           <option value="delete">Delete Project</option>
@@ -1028,16 +1051,17 @@ function applyColor(u:Record<string,number>,color:string,count:number){
 }
 function buildHandoff(p:Project,e:any){
   if(p.service==="Permanent"){
+    const selectedFt=p.permanentCoverage==="All Around"?(p.permanentAllAroundFt||0):p.permanentCoverage==="Front & Sides"?(p.permanentFrontSidesFt||0):(p.permanentFrontFt||0);
     const lines=[
       "PROPERTY: "+p.stories+" story · "+p.roofSurface+" · "+p.complexity+" · "+p.access,
       "COLOR / SYSTEM: Minleon permanent lighting",
       "",
       "PERMANENT LIGHTING",
       "Coverage: "+p.permanentCoverage,
-      "Measured footage: "+p.permanentFt+" ft",
-      "Expected material: "+p.permanentFt+" ft Minleon permanent lighting",
+      "Measured footage: "+selectedFt+" ft",
+      "Expected material: "+selectedFt+" ft Minleon permanent lighting",
       "",
-      "TECH: Record actual installed footage and explain any variance."
+      "TECH: Install only the approved coverage. Record actual installed footage and explain any variance."
     ];
     return lines.join("\n");
   }
