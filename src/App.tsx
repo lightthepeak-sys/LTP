@@ -886,7 +886,13 @@ function PhotoMeasure({
     if(mode==="reference"){
       setReferencePoints(prev=>{
         const next=prev.length>=2?[p]:[...prev,p];
-        if(next.length===2)setTimeout(()=>setReferenceOpen(false),250);
+        if(next.length===2){
+          setTimeout(()=>{
+            setReferenceOpen(false);
+            setMode("line");
+            setActivePoints([]);
+          },150);
+        }
         return next;
       });
       return;
@@ -925,7 +931,10 @@ function PhotoMeasure({
   return <div className="measure-v2">
     <div className="measure-toolbar">
       <label className="photo-upload"><input type="file" accept="image/*,.avif" onChange={upload}/><span>{imageUrl?"Replace Photo":"Add Property Photo"}</span></label>
-      {imageUrl&&referencePoints.length===2&&<button className="reference-chip" onClick={()=>{setReferenceOpen(v=>!v);setMode("reference")}}>
+      {imageUrl&&referencePoints.length===2&&<button className="reference-chip" onClick={()=>{
+        if(referenceOpen){setReferenceOpen(false);setMode("line")}
+        else{setReferenceOpen(true);setMode("reference")}
+      }}>
         <ReferenceSketch type={selectedRef.type}/><span>{selectedRef.label}<b>{referenceFt} ft</b></span><small>{referenceOpen?"Close":"Edit"}</small>
       </button>}
     </div>
@@ -934,17 +943,21 @@ function PhotoMeasure({
     <div className="measure-v2-layout">
       <aside className="measure-v2-rail">
         {referenceOpen&&<section className="measure-panel compact-reference">
-          <div className="panel-head"><b>Reference</b>{referencePoints.length===2&&<button onClick={()=>setReferenceOpen(false)}>Close</button>}</div>
+          <div className="panel-head"><b>Reference</b>{referencePoints.length===2&&<button onClick={()=>{setReferenceOpen(false);setMode("line")}}>Close</button>}</div>
           <div className="reference-visual-grid">{REFERENCE_PRESETS.map(ref=><button type="button" key={ref.key} onClick={()=>chooseReference(ref.key)} className={referencePreset===ref.key?"selected":""}>
             <ReferenceSketch type={ref.type}/><span>{ref.label}</span><small>{ref.feet?ref.feet+" ft":"Known size"}</small>
           </button>)}</div>
           {referencePreset==="custom"&&<Field label="Known width · ft"><input className="input" type="number" min=".1" step=".1" value={referenceFt} onChange={e=>setReferenceFt(+e.target.value)}/></Field>}
-          <button className="primary full" onClick={()=>setMode("reference")}>{referencePoints.length===2?"Re-mark reference":"Mark reference"}</button>
+          <button className="primary full" onClick={()=>{
+            setReferencePoints([]);
+            setActivePoints([]);
+            setMode("reference");
+          }}>{referencePoints.length===2?"Re-mark reference":"Mark reference"}</button>
         </section>}
 
         {!referenceOpen&&<section className="measure-panel measurement-controls">
           <div className="measure-mode-tabs">
-            <button className={mode==="line"?"active":""} onClick={()=>setMode("line")}>Lines / Sections</button>
+            <button className={mode==="line"?"active":""} onClick={()=>{setMode("line");setObjectAdded("")}}>Lines / Sections</button>
             <button className={mode==="object"?"active":""} onClick={()=>setMode("object")}>Objects</button>
           </div>
 
@@ -987,8 +1000,8 @@ function PhotoMeasure({
         <div className="measure-image-surface" onClick={clickImage}>
           <img src={imageUrl} onLoad={e=>setImageSize({w:(e.target as HTMLImageElement).naturalWidth||1,h:(e.target as HTMLImageElement).naturalHeight||1})}/>
           <svg viewBox="0 0 100 100" preserveAspectRatio="none">
-            {referencePoints.length===2&&<line x1={referencePoints[0].x} y1={referencePoints[0].y} x2={referencePoints[1].x} y2={referencePoints[1].y} className="ref-line"/>}
-            {referencePoints.map((p,i)=><circle key={"r"+i} cx={p.x} cy={p.y} r=".25" className="ref-point"/>)}
+            {referenceOpen&&referencePoints.length===2&&<line x1={referencePoints[0].x} y1={referencePoints[0].y} x2={referencePoints[1].x} y2={referencePoints[1].y} className="ref-line"/>}
+            {referenceOpen&&referencePoints.map((p,i)=><circle key={"r"+i} cx={p.x} cy={p.y} r=".25" className="ref-point"/>)}
             {sections.map(s=><g key={s.id}><polyline points={s.points.map(p=>p.x+","+p.y).join(" ")} className={"measure-line saved "+measurementClass(s.target)}/><text x={midPoint(s.points).x} y={midPoint(s.points).y} className="measure-label">{lineFeet(s.points).toFixed(1)} ft</text></g>)}
             {activePoints.length>1&&<><polyline points={activePoints.map(p=>p.x+","+p.y).join(" ")} className={"measure-line active "+measurementClass(target)}/><text x={midPoint(activePoints).x} y={midPoint(activePoints).y} className="measure-label live">{activeFeet.toFixed(1)} ft</text></>}
             {activePoints.map((p,i)=><circle key={"a"+i} cx={p.x} cy={p.y} r=".2" className="measure-point"/>)}
@@ -996,7 +1009,7 @@ function PhotoMeasure({
             {objectWidthPoints.length===2&&<><line x1={objectWidthPoints[0].x} y1={objectWidthPoints[0].y} x2={objectWidthPoints[1].x} y2={objectWidthPoints[1].y} className="object-axis-line width"/><text x={midPoint(objectWidthPoints).x} y={midPoint(objectWidthPoints).y} className="measure-label object-label">W {formatFeetInches(objectWidth)}</text></>}
             {[...objectHeightPoints,...objectWidthPoints].map((p,i)=><circle key={"o"+i} cx={p.x} cy={p.y} r=".2" className="object-point"/>)}
           </svg>
-          <div className="photo-hint">{mode==="reference"?"Click both edges of the "+selectedRef.label.toLowerCase():mode==="object"?(objectAxis==="height"?"Click bottom then top":"Click left edge then right edge"):activePoints.length?"Keep tracing, Undo Point, or start New Section":"Click the first point of this section"}</div>
+          <div className="photo-hint">{referenceOpen&&mode==="reference"?"Click both edges of the "+selectedRef.label.toLowerCase():mode==="object"?(objectAxis==="height"?"Click bottom then top":"Click left edge then right edge"):activePoints.length?"Keep tracing, Undo Point, or start New Section":"Click the first point of this section"}</div>
         </div>
       </div>
     </div>}
