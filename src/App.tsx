@@ -194,31 +194,48 @@ export default function App(){
     if(project.access==="Special equipment")base+=1;
     const suggestedRoofRate=Math.min(12,Math.max(8,base));
     const roofRate=project.roofRate>0?project.roofRate:8;
-    const roofBulbs=Math.ceil((project.roofFt+project.garageFt+project.windowFt)/1.25);
-    const ridgeBulbs=Math.ceil(project.ridgeFt/1.25);
-    const groundBulbs=Math.ceil(project.groundFt/1.25);
+
+    const c9Items=project.c9Items||[];
+    const c9Selling=c9Items.length?c9Items.reduce((s,i)=>s+i.feet*i.rate*(1-(i.discountPct||0)/100),0):
+      (project.roofFt+project.garageFt+project.windowFt)*roofRate+project.ridgeFt*Math.min(12,roofRate+.5)+project.groundFt*4;
+
+    const roofBulbs=c9Items.length?c9Items.filter(i=>["Roofline","Garage / Architecture","Window Outline"].includes(i.area)).reduce((s,i)=>s+Math.ceil(i.feet/1.25),0):Math.ceil((project.roofFt+project.garageFt+project.windowFt)/1.25);
+    const ridgeBulbs=c9Items.length?c9Items.filter(i=>i.area==="Ridgeline").reduce((s,i)=>s+Math.ceil(i.feet/1.25),0):Math.ceil(project.ridgeFt/1.25);
+    const groundBulbs=c9Items.length?c9Items.filter(i=>i.area==="Garden Bed / Ground").reduce((s,i)=>s+Math.ceil(i.feet/1.25),0):Math.ceil(project.groundFt/1.25);
+    const totalC9Feet=c9Items.length?c9Items.reduce((s,i)=>s+i.feet,0):project.roofFt+project.ridgeFt+project.groundFt+project.garageFt+project.windowFt;
+
     const landscapeItems=project.landscapeItems||[];
-    const arrayMini=landscapeItems.reduce((s,i)=>s+(i.count||0)*(i.strandsEach||0),0);
-    const bushStrands=project.bushStrandsOverride>0?project.bushStrandsOverride:Math.ceil(project.bushFt/25);
-    const legacyMini=bushStrands+project.palmStrands+project.treeStrands+project.columnStrands;
-    const miniStrands=landscapeItems.length?arrayMini:legacyMini;
+    const miniStrands=landscapeItems.length?landscapeItems.reduce((s,i)=>s+(i.count||0)*(i.strandsEach||0),0):
+      (project.bushStrandsOverride>0?project.bushStrandsOverride:Math.ceil(project.bushFt/25))+project.palmStrands+project.treeStrands+project.columnStrands;
+    const landscapeSelling=landscapeItems.reduce((s,i)=>s+(i.count||0)*(i.priceEach??((i.strandsEach||0)*35))*(1-(i.discountPct||0)/100),0);
+
     const decorItems=project.decorItems||[];
-    const wreathPrice=decorItems.length?decorItems.filter(i=>i.type==="Wreath").reduce((s,i)=>s+i.count*(i.preset==="36 in"?200:i.preset==="48 in"?300:600),0):project.wreathQty*(project.wreathSize===36?200:project.wreathSize===48?300:600);
-    const selling=(project.roofFt+project.garageFt+project.windowFt)*roofRate+
-      project.ridgeFt*Math.min(12,roofRate+.5)+project.groundFt*4+miniStrands*35+
-      wreathPrice+
-      (decorItems.length?decorItems.filter(i=>i.type==="Garland").reduce((s,i)=>s+i.amount*22,0):project.garlandFt*22);
-    const bulbCost=colorCost(project.c9Color);
+    const decorSelling=decorItems.reduce((s,i)=>{
+      const units=(i.type==="Garland"||i.type==="Ground Stakes")?(i.amount||0):(i.count||0);
+      return s+units*(i.priceEach||0)*(1-(i.discountPct||0)/100);
+    },0);
+
+    const selling=c9Selling+landscapeSelling+decorSelling;
     const clipCost=project.roofSurface==="Tile"?INV.clipTile.cost:project.roofSurface==="Metal"?INV.clipMetal.cost:INV.clipShingle.cost;
+    const c9Material=c9Items.length?c9Items.reduce((s,i)=>{
+      const bulbs=Math.ceil(i.feet/1.25);
+      const bulbCost=i.area==="Garden Bed / Ground"?INV.c9Traditional.cost:colorCost(i.color);
+      const hardware=i.area==="Garden Bed / Ground"?INV.stakesCircle.cost:i.area==="Ridgeline"?INV.clipRidge.cost:clipCost;
+      return s+bulbs*(bulbCost+hardware)+i.feet*INV.c9Cord15.cost;
+    },0):
+      (roofBulbs+ridgeBulbs)*colorCost(project.c9Color)+groundBulbs*INV.c9Traditional.cost+
+      totalC9Feet*INV.c9Cord15.cost+roofBulbs*clipCost+ridgeBulbs*INV.clipRidge.cost+groundBulbs*INV.stakesCircle.cost;
+
     const existingMinis=Math.max(0,(INV.miniSun.on-(INV.miniSun.damaged||0)));
     const minleonUsed=Math.min(existingMinis,miniStrands);
     const s4Used=Math.max(0,miniStrands-minleonUsed);
-    const material=(roofBulbs+ridgeBulbs)*bulbCost+groundBulbs*INV.c9Traditional.cost+
-      (project.roofFt+project.ridgeFt+project.groundFt+project.garageFt+project.windowFt)*INV.c9Cord15.cost+
-      roofBulbs*clipCost+ridgeBulbs*INV.clipRidge.cost+groundBulbs*INV.stakesCircle.cost+
-      minleonUsed*INV.miniSun.cost+s4Used*INV.s4Mini.cost+
-      (decorItems.length?decorItems.filter(i=>i.type==="Wreath").reduce((s,i)=>s+i.count*(i.preset==="48 in"?INV.wreath48.cost:i.preset==="36 in"?85:300),0):project.wreathQty*(project.wreathSize===48?INV.wreath48.cost:project.wreathSize===36?85:300))+
-      (decorItems.length?decorItems.filter(i=>i.type==="Garland").reduce((s,i)=>s+Math.ceil(i.amount/9)*INV.garland9.cost,0):Math.ceil(project.garlandFt/9)*INV.garland9.cost);
+    const landscapeMaterial=minleonUsed*INV.miniSun.cost+s4Used*INV.s4Mini.cost;
+    const decorMaterial=decorItems.reduce((s,i)=>{
+      if(i.type==="Wreath")return s+i.count*(i.preset==="48 in"?INV.wreath48.cost:i.preset==="36 in"?85:300);
+      if(i.type==="Garland")return s+Math.ceil(i.amount/9)*INV.garland9.cost;
+      return s;
+    },0);
+    const material=c9Material+landscapeMaterial+decorMaterial;
     return {selling,material,gp:selling-material,gm:selling?((selling-material)/selling)*100:0,roofRate,suggestedRoofRate,roofBulbs,ridgeBulbs,groundBulbs,bushStrands,miniStrands};
   },[project]);
 
@@ -228,16 +245,31 @@ export default function App(){
         p.permanentCoverage==="Front & Sides"?(p.permanentFrontSidesFt||p.permanentFt):(p.permanentFrontFt||p.permanentFt);
       return {permanent:ft};
     }
-    const roofBulbs=Math.ceil((p.roofFt+p.garageFt+p.windowFt)/1.25);
-    const ridgeBulbs=Math.ceil(p.ridgeFt/1.25);
-    const groundBulbs=Math.ceil(p.groundFt/1.25);
+    const c9Items=p.c9Items||[];
+    const roofBulbs=c9Items.length?c9Items.filter(i=>["Roofline","Garage / Architecture","Window Outline"].includes(i.area)).reduce((s,i)=>s+Math.ceil(i.feet/1.25),0):Math.ceil((p.roofFt+p.garageFt+p.windowFt)/1.25);
+    const ridgeBulbs=c9Items.length?c9Items.filter(i=>i.area==="Ridgeline").reduce((s,i)=>s+Math.ceil(i.feet/1.25),0):Math.ceil(p.ridgeFt/1.25);
+    const groundBulbs=c9Items.length?c9Items.filter(i=>i.area==="Garden Bed / Ground").reduce((s,i)=>s+Math.ceil(i.feet/1.25),0):Math.ceil(p.groundFt/1.25);
     const landscapeItems=p.landscapeItems||[];
     const bushes=p.bushStrandsOverride>0?p.bushStrandsOverride:Math.ceil(p.bushFt/25);
     const minis=landscapeItems.length?landscapeItems.reduce((s,i)=>s+(i.count||0)*(i.strandsEach||0),0):bushes+p.palmStrands+p.treeStrands+p.columnStrands;
-    const u:Record<string,number>={c9Cord15:p.roofFt+p.ridgeFt+p.groundFt+p.garageFt+p.windowFt,clipRidge:ridgeBulbs,stakesCircle:groundBulbs,c9Traditional:groundBulbs};
-    const clip=p.roofSurface==="Tile"?"clipTile":p.roofSurface==="Metal"?"clipMetal":"clipShingle";
-    u[clip]=(u[clip]||0)+roofBulbs;
-    applyColor(u,p.c9Color,roofBulbs+ridgeBulbs);
+    const u:Record<string,number>={};
+    if(c9Items.length){
+      c9Items.forEach(i=>{
+        const bulbs=Math.ceil(i.feet/1.25);
+        u.c9Cord15=(u.c9Cord15||0)+i.feet;
+        if(i.area==="Garden Bed / Ground"){u.stakesCircle=(u.stakesCircle||0)+bulbs;u.c9Traditional=(u.c9Traditional||0)+bulbs}
+        else if(i.area==="Ridgeline"){u.clipRidge=(u.clipRidge||0)+bulbs;applyColor(u,i.color,bulbs)}
+        else{
+          const clip=p.roofSurface==="Tile"?"clipTile":p.roofSurface==="Metal"?"clipMetal":"clipShingle";
+          u[clip]=(u[clip]||0)+bulbs;applyColor(u,i.color,bulbs);
+        }
+      });
+    }else{
+      Object.assign(u,{c9Cord15:p.roofFt+p.ridgeFt+p.groundFt+p.garageFt+p.windowFt,clipRidge:ridgeBulbs,stakesCircle:groundBulbs,c9Traditional:groundBulbs});
+      const clip=p.roofSurface==="Tile"?"clipTile":p.roofSurface==="Metal"?"clipMetal":"clipShingle";
+      u[clip]=(u[clip]||0)+roofBulbs;
+      applyColor(u,p.c9Color,roofBulbs+ridgeBulbs);
+    }
     const minleonAvailable=Math.max(0,INV.miniSun.on-(INV.miniSun.damaged||0));
     u.miniSun=Math.min(minleonAvailable,minis);
     u.s4Mini=Math.max(0,minis-u.miniSun);
