@@ -592,7 +592,14 @@ export default function App(){
 
       {tab==="measure"&&<section className="page measure-page">
         <div className="page-head purple-head"><div><span className="eyebrow">Optional utility · {project.customer||"Current project"}</span><h1>Measurements</h1><p>Upload a property photo only when needed. This screen measures; it does not create a second customer, quote or estimate.</p></div><button className="primary" onClick={()=>setTab("quote")}>Continue to Quote</button></div>
-        <PhotoMeasure project={project} onApply={(key,value)=>set(key as keyof Project,value as any)} />
+        <PhotoMeasure
+          project={project}
+          onApply={(key,value)=>set(key as keyof Project,value as any)}
+          onAddLandscape={(type,label,strands)=>{
+            const item:LandscapeItem={id:uid(),type,preset:label,count:1,strandsEach:strands};
+            setProject(p=>({...p,landscapeItems:[...(p.landscapeItems||[]),item],updatedAt:new Date().toISOString()}));
+          }}
+        />
       </section>}
 
       {tab==="projects"&&<section className="page">
@@ -784,8 +791,15 @@ type DrawPoint={x:number;y:number};
 type MeasureSection={id:string;target:MeasureField;points:DrawPoint[]};
 type ObjectKind="Palm"|"Tree"|"Column"|"Bush";
 
-function PhotoMeasure({project,onApply}:{project:Project;onApply:(key:MeasureField,value:number)=>void}){
+function PhotoMeasure({
+  project,onApply,onAddLandscape
+}:{
+  project:Project;
+  onApply:(key:MeasureField,value:number)=>void;
+  onAddLandscape:(type:LandscapeItem["type"],label:string,strands:number)=>void;
+}){
   const [imageUrl,setImageUrl]=useState("");
+  const [imageSize,setImageSize]=useState({w:1,h:1});
   const [referencePreset,setReferencePreset]=useState("garage1");
   const [referenceFt,setReferenceFt]=useState(9);
   const [referencePoints,setReferencePoints]=useState<DrawPoint[]>([]);
@@ -795,72 +809,108 @@ function PhotoMeasure({project,onApply}:{project:Project;onApply:(key:MeasureFie
   const [sections,setSections]=useState<MeasureSection[]>([]);
   const [activePoints,setActivePoints]=useState<DrawPoint[]>([]);
   const [objectKind,setObjectKind]=useState<ObjectKind>("Palm");
-  const [objectPoints,setObjectPoints]=useState<DrawPoint[]>([]);
+  const [objectAxis,setObjectAxis]=useState<"height"|"width">("height");
+  const [objectHeightPoints,setObjectHeightPoints]=useState<DrawPoint[]>([]);
+  const [objectWidthPoints,setObjectWidthPoints]=useState<DrawPoint[]>([]);
   const [wrapSpacingIn,setWrapSpacingIn]=useState(6);
   const [bushDepth,setBushDepth]=useState(2);
+  const [objectAdded,setObjectAdded]=useState("");
 
-  const refPixels=referencePoints.length===2?distance(referencePoints[0],referencePoints[1]):0;
+  const imageDistance=(a:DrawPoint,b:DrawPoint)=>{
+    const dx=(b.x-a.x)/100*imageSize.w;
+    const dy=(b.y-a.y)/100*imageSize.h;
+    return Math.hypot(dx,dy);
+  };
+  const refPixels=referencePoints.length===2?imageDistance(referencePoints[0],referencePoints[1]):0;
   const pixelsPerFoot=refPixels>0&&referenceFt>0?refPixels/referenceFt:0;
   const selectedRef=REFERENCE_PRESETS.find(r=>r.key===referencePreset)||REFERENCE_PRESETS[0];
 
   const lineFeet=(pts:DrawPoint[])=>{
     if(pts.length<2||!pixelsPerFoot)return 0;
-    let px=0;for(let i=1;i<pts.length;i++)px+=distance(pts[i-1],pts[i]);
+    let px=0;
+    for(let i=1;i<pts.length;i++)px+=imageDistance(pts[i-1],pts[i]);
     return px/pixelsPerFoot;
   };
+  const twoPointFeet=(pts:DrawPoint[])=>pts.length===2&&pixelsPerFoot?imageDistance(pts[0],pts[1])/pixelsPerFoot:0;
+
   const activeFeet=lineFeet(activePoints);
   const targetSections=sections.filter(s=>s.target===target);
   const savedFeet=targetSections.reduce((sum,s)=>sum+lineFeet(s.points),0);
   const totalFeet=savedFeet+activeFeet;
 
+  const objectHeight=twoPointFeet(objectHeightPoints);
+  const objectWidth=twoPointFeet(objectWidthPoints);
   const objectDims=(()=>{
-    if(objectPoints.length!==2||!pixelsPerFoot)return null;
-    const a=objectPoints[0],b=objectPoints[1];
-    const width=Math.abs(b.x-a.x)/pixelsPerFoot;
-    const height=Math.abs(b.y-a.y)/pixelsPerFoot;
-    const circumference=Math.PI*width;
-    const wraps=Math.max(1,Math.ceil(height/(wrapSpacingIn/12)));
+    if(!objectHeight||!objectWidth)return null;
+    const circumference=Math.PI*objectWidth;
+    const passSpacingFt=wrapSpacingIn/12;
+    const wraps=Math.max(1,Math.ceil(objectHeight/passSpacingFt));
     const wrapFeet=circumference*wraps;
     const strands=Math.ceil(wrapFeet/25);
-    const bushFace=width*height;
-    const bushSurface=(width+2*bushDepth)*height;
-    return {width,height,circumference,wraps,wrapFeet,strands,bushFace,bushSurface};
+    const bushSurface=(objectWidth+2*bushDepth)*objectHeight;
+    const bushLightFeet=bushSurface/passSpacingFt;
+    const bushStrands=Math.ceil(bushLightFeet/25);
+    return {height:objectHeight,width:objectWidth,circumference,wraps,wrapFeet,strands,bushSurface,bushLightFeet,bushStrands};
   })();
 
   function upload(e:any){
     const file=e.target.files?.[0];if(!file)return;
     if(imageUrl)URL.revokeObjectURL(imageUrl);
-    setImageUrl(URL.createObjectURL(file));setReferencePoints([]);setSections([]);setActivePoints([]);setObjectPoints([]);setReferenceOpen(true);setMode("reference");
+    setImageUrl(URL.createObjectURL(file));
+    setReferencePoints([]);setSections([]);setActivePoints([]);
+    setObjectHeightPoints([]);setObjectWidthPoints([]);
+    setReferenceOpen(true);setMode("reference");setObjectAdded("");
   }
   function chooseReference(key:string){
     const ref=REFERENCE_PRESETS.find(r=>r.key===key);if(!ref)return;
-    setReferencePreset(key);if(ref.feet>0)setReferenceFt(ref.feet);setReferencePoints([]);setReferenceOpen(true);setMode("reference");
+    setReferencePreset(key);if(ref.feet>0)setReferenceFt(ref.feet);
+    setReferencePoints([]);setReferenceOpen(true);setMode("reference");
   }
   function pointFromEvent(e:any):DrawPoint{
     const rect=e.currentTarget.getBoundingClientRect();
     return {x:(e.clientX-rect.left)/rect.width*100,y:(e.clientY-rect.top)/rect.height*100};
   }
   function clickImage(e:any){
-    if(!imageUrl)return;const p=pointFromEvent(e);
+    if(!imageUrl)return;
+    const p=pointFromEvent(e);
     if(mode==="reference"){
       setReferencePoints(prev=>{
         const next=prev.length>=2?[p]:[...prev,p];
         if(next.length===2)setTimeout(()=>setReferenceOpen(false),250);
         return next;
-      });return;
+      });
+      return;
     }
     if(!pixelsPerFoot)return;
-    if(mode==="object"){setObjectPoints(prev=>prev.length>=2?[p]:[...prev,p]);return}
+    if(mode==="object"){
+      if(objectAxis==="height")setObjectHeightPoints(prev=>prev.length>=2?[p]:[...prev,p]);
+      else setObjectWidthPoints(prev=>prev.length>=2?[p]:[...prev,p]);
+      setObjectAdded("");
+      return;
+    }
     setActivePoints(prev=>[...prev,p]);
+  }
+  function undoLastPoint(){
+    setActivePoints(prev=>prev.slice(0,-1));
   }
   function newSection(){
     if(activePoints.length>=2)setSections(prev=>[...prev,{id:uid(),target,points:activePoints}]);
     setActivePoints([]);
   }
-  function doneDrawing(){newSection();setMode("line")}
+  function doneDrawing(){newSection()}
   function removeSection(id:string){setSections(prev=>prev.filter(s=>s.id!==id))}
   function clearTarget(){setSections(prev=>prev.filter(s=>s.target!==target));setActivePoints([])}
   function useLineMeasurement(){if(totalFeet>0)onApply(target,Math.round(totalFeet*10)/10)}
+  function clearObject(){
+    setObjectHeightPoints([]);setObjectWidthPoints([]);setObjectAdded("");
+  }
+  function addObjectToEstimate(){
+    if(!objectDims)return;
+    const strands=objectKind==="Bush"?objectDims.bushStrands:objectDims.strands;
+    const label=`Measured ${objectKind} · ${objectDims.height.toFixed(1)} ft H × ${objectDims.width.toFixed(1)} ft W`;
+    onAddLandscape(objectKind,label,strands);
+    setObjectAdded(`Added to estimate · ${strands} strands`);
+  }
 
   return <div className="measure-v2">
     <div className="measure-toolbar">
@@ -883,42 +933,59 @@ function PhotoMeasure({project,onApply}:{project:Project;onApply:(key:MeasureFie
         </section>}
 
         {!referenceOpen&&<section className="measure-panel measurement-controls">
-          <div className="measure-mode-tabs"><button className={mode==="line"?"active":""} onClick={()=>setMode("line")}>Lines / Sections</button><button className={mode==="object"?"active":""} onClick={()=>setMode("object")}>Palm / Tree / Column / Bush</button></div>
+          <div className="measure-mode-tabs">
+            <button className={mode==="line"?"active":""} onClick={()=>setMode("line")}>Lines / Sections</button>
+            <button className={mode==="object"?"active":""} onClick={()=>setMode("object")}>Objects</button>
+          </div>
 
           {mode!=="object"?<>
             <Field label="What are you measuring?"><select className="input" value={target} onChange={e=>{newSection();setTarget(e.target.value as MeasureField)}}>
               <option value="roofFt">Roofline</option><option value="ridgeFt">Ridgeline</option><option value="groundFt">Ground stake / garden bed C9</option><option value="garageFt">Garage outline</option><option value="windowFt">Window outline</option><option value="bushFt">Garden / bed length</option>
             </select></Field>
             <div className="live-measure-card"><span>Live section</span><b>{activeFeet.toFixed(1)} ft</b><small>Total {targetLabel(target)}: {totalFeet.toFixed(1)} ft</small></div>
-            <div className="section-actions"><button className="primary" disabled={activePoints.length<2} onClick={newSection}>New Section</button><button disabled={activePoints.length<2} onClick={doneDrawing}>Done</button><button onClick={clearTarget}>Clear</button></div>
+            <div className="section-actions four">
+              <button className="primary" disabled={activePoints.length<2} onClick={newSection}>New Section</button>
+              <button disabled={activePoints.length===0} onClick={undoLastPoint}>Undo Point</button>
+              <button disabled={activePoints.length<2} onClick={doneDrawing}>Done</button>
+              <button onClick={clearTarget}>Clear</button>
+            </div>
             {targetSections.length>0&&<div className="section-list">{targetSections.map((s,i)=><div key={s.id}><span>Section {i+1}</span><b>{lineFeet(s.points).toFixed(1)} ft</b><button onClick={()=>removeSection(s.id)}>Remove</button></div>)}</div>}
-            <button className="primary full" disabled={totalFeet<=0} onClick={useLineMeasurement}>Use {totalFeet.toFixed(1)} ft in Project</button>
+            <button className="primary full" disabled={totalFeet<=0} onClick={useLineMeasurement}>Use {totalFeet.toFixed(1)} ft in Estimate</button>
           </>:<>
-            <Field label="Object"><select className="input" value={objectKind} onChange={e=>{setObjectKind(e.target.value as ObjectKind);setObjectPoints([])}}><option>Palm</option><option>Tree</option><option>Column</option><option>Bush</option></select></Field>
-            <div className="object-instruction">Click opposite corners: bottom-left → top-right.</div>
-            {(objectKind==="Palm"||objectKind==="Tree"||objectKind==="Column")&&<Field label="Wrap spacing"><select className="input" value={wrapSpacingIn} onChange={e=>setWrapSpacingIn(+e.target.value)}><option value={4}>4 in tight</option><option value={6}>6 in standard</option><option value={8}>8 in loose</option></select></Field>}
+            <Field label="Object"><select className="input" value={objectKind} onChange={e=>{setObjectKind(e.target.value as ObjectKind);clearObject()}}><option>Palm</option><option>Tree</option><option>Column</option><option>Bush</option></select></Field>
+            <div className="object-axis-tabs">
+              <button className={objectAxis==="height"?"active":""} onClick={()=>setObjectAxis("height")}>1 · Measure Height</button>
+              <button className={objectAxis==="width"?"active":""} onClick={()=>setObjectAxis("width")}>2 · Measure Width</button>
+            </div>
+            <div className="object-instruction">{objectAxis==="height"?"Click the bottom and top of the object.":"Click the left and right edges at the measured area."}</div>
+            <Field label="Light spacing / density"><select className="input" value={wrapSpacingIn} onChange={e=>setWrapSpacingIn(+e.target.value)}><option value={4}>4 in · tight</option><option value={6}>6 in · standard</option><option value={8}>8 in · loose</option></select></Field>
             {objectKind==="Bush"&&<Field label="Estimated hidden depth · ft"><input className="input" type="number" min=".5" step=".5" value={bushDepth} onChange={e=>setBushDepth(+e.target.value)}/></Field>}
+            <div className="object-dimension-status">
+              <div className={objectHeight?"done":""}><span>Height</span><b>{objectHeight?objectHeight.toFixed(1)+" ft":"Not measured"}</b></div>
+              <div className={objectWidth?"done":""}><span>Width</span><b>{objectWidth?objectWidth.toFixed(1)+" ft":"Not measured"}</b></div>
+            </div>
             {objectDims?<div className="object-results">
-              <div><span>Height</span><b>{objectDims.height.toFixed(1)} ft</b></div><div><span>Width</span><b>{objectDims.width.toFixed(1)} ft</b></div>
-              {objectKind!=="Bush"?<><div><span>Circumference</span><b>{objectDims.circumference.toFixed(1)} ft</b></div><div><span>Estimated wrap</span><b>{objectDims.wrapFeet.toFixed(0)} ft</b></div><div><span>25-ft strands</span><b>{objectDims.strands}</b></div></>:<><div><span>Depth</span><b>{bushDepth.toFixed(1)} ft</b></div><div><span>Visible face</span><b>{objectDims.bushFace.toFixed(1)} sq ft</b></div><div><span>Approx. wrap surface</span><b>{objectDims.bushSurface.toFixed(1)} sq ft</b></div></>}
-            </div>:<div className="quiet-empty">Mark two opposite corners on the photo.</div>}
-            <button onClick={()=>setObjectPoints([])}>Clear Object</button>
+              {objectKind!=="Bush"?<><div><span>Circumference</span><b>{objectDims.circumference.toFixed(1)} ft</b></div><div><span>Estimated wrap</span><b>{objectDims.wrapFeet.toFixed(0)} ft</b></div><div><span>25-ft strands</span><b>{objectDims.strands}</b></div></>:<><div><span>Approx. covered surface</span><b>{objectDims.bushSurface.toFixed(1)} sq ft</b></div><div><span>Estimated light footage</span><b>{objectDims.bushLightFeet.toFixed(0)} ft</b></div><div><span>25-ft strands</span><b>{objectDims.bushStrands}</b></div></>}
+            </div>:<div className="quiet-empty">Measure both height and width.</div>}
+            <div className="object-actions"><button onClick={clearObject}>Clear Object</button><button className="primary" disabled={!objectDims} onClick={addObjectToEstimate}>Add to Estimate</button></div>
+            {objectAdded&&<div className="object-added">{objectAdded}</div>}
           </>}
         </section>}
       </aside>
 
       <div className="measure-photo-stage" onClick={clickImage}>
-        <img src={imageUrl}/>
+        <img src={imageUrl} onLoad={e=>setImageSize({w:(e.target as HTMLImageElement).naturalWidth||1,h:(e.target as HTMLImageElement).naturalHeight||1})}/>
         <svg viewBox="0 0 100 100" preserveAspectRatio="none">
           {referencePoints.length===2&&<line x1={referencePoints[0].x} y1={referencePoints[0].y} x2={referencePoints[1].x} y2={referencePoints[1].y} className="ref-line"/>}
-          {referencePoints.map((p,i)=><circle key={"r"+i} cx={p.x} cy={p.y} r=".35" className="ref-point"/>)}
-          {sections.map((s,si)=><g key={s.id}><polyline points={s.points.map(p=>p.x+","+p.y).join(" ")} className="measure-line saved"/><text x={midPoint(s.points).x} y={midPoint(s.points).y} className="measure-label">{lineFeet(s.points).toFixed(1)} ft</text></g>)}
+          {referencePoints.map((p,i)=><circle key={"r"+i} cx={p.x} cy={p.y} r=".25" className="ref-point"/>)}
+          {sections.map(s=><g key={s.id}><polyline points={s.points.map(p=>p.x+","+p.y).join(" ")} className="measure-line saved"/><text x={midPoint(s.points).x} y={midPoint(s.points).y} className="measure-label">{lineFeet(s.points).toFixed(1)} ft</text></g>)}
           {activePoints.length>1&&<><polyline points={activePoints.map(p=>p.x+","+p.y).join(" ")} className="measure-line"/><text x={midPoint(activePoints).x} y={midPoint(activePoints).y} className="measure-label live">{activeFeet.toFixed(1)} ft</text></>}
-          {activePoints.map((p,i)=><circle key={"a"+i} cx={p.x} cy={p.y} r=".28" className="measure-point"/>)}
-          {objectPoints.length===2&&<><rect x={Math.min(objectPoints[0].x,objectPoints[1].x)} y={Math.min(objectPoints[0].y,objectPoints[1].y)} width={Math.abs(objectPoints[1].x-objectPoints[0].x)} height={Math.abs(objectPoints[1].y-objectPoints[0].y)} className="object-box"/><text x={(objectPoints[0].x+objectPoints[1].x)/2} y={Math.min(objectPoints[0].y,objectPoints[1].y)-1} className="measure-label live">{objectDims?objectDims.height.toFixed(1)+"h × "+objectDims.width.toFixed(1)+"w":""}</text></>}
-          {objectPoints.map((p,i)=><circle key={"o"+i} cx={p.x} cy={p.y} r=".28" className="object-point"/>)}
+          {activePoints.map((p,i)=><circle key={"a"+i} cx={p.x} cy={p.y} r=".2" className="measure-point"/>)}
+          {objectHeightPoints.length===2&&<><line x1={objectHeightPoints[0].x} y1={objectHeightPoints[0].y} x2={objectHeightPoints[1].x} y2={objectHeightPoints[1].y} className="object-axis-line"/><text x={midPoint(objectHeightPoints).x} y={midPoint(objectHeightPoints).y} className="measure-label object-label">H {objectHeight.toFixed(1)} ft</text></>}
+          {objectWidthPoints.length===2&&<><line x1={objectWidthPoints[0].x} y1={objectWidthPoints[0].y} x2={objectWidthPoints[1].x} y2={objectWidthPoints[1].y} className="object-axis-line width"/><text x={midPoint(objectWidthPoints).x} y={midPoint(objectWidthPoints).y} className="measure-label object-label">W {objectWidth.toFixed(1)} ft</text></>}
+          {[...objectHeightPoints,...objectWidthPoints].map((p,i)=><circle key={"o"+i} cx={p.x} cy={p.y} r=".2" className="object-point"/>)}
         </svg>
-        <div className="photo-hint">{mode==="reference"?"Click both edges of the "+selectedRef.label.toLowerCase():mode==="object"?"Click opposite corners of the "+objectKind.toLowerCase():activePoints.length?"Keep tracing or choose New Section":"Click the first point of this section"}</div>
+        <div className="photo-hint">{mode==="reference"?"Click both edges of the "+selectedRef.label.toLowerCase():mode==="object"?(objectAxis==="height"?"Click bottom then top":"Click left edge then right edge"):activePoints.length?"Keep tracing, Undo Point, or start New Section":"Click the first point of this section"}</div>
       </div>
     </div>}
   </div>
