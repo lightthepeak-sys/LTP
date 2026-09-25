@@ -405,22 +405,22 @@ export default function App(){
   }
 
   const serviceProjects=projects.filter(p=>p.service===projectServiceView);
-  const approvedProjects=serviceProjects.filter(p=>p.status==="Quote Approved");
-  const lostProjects=serviceProjects.filter(p=>p.status==="Quote Not Approved");
-  const openProjects=serviceProjects.filter(p=>p.status==="Estimate Sent");
+  const approvedProjects=serviceProjects.filter(p=>p.quoteComplete&&p.status==="Quote Approved");
+  const lostProjects=serviceProjects.filter(p=>p.quoteComplete&&p.status==="Quote Not Approved");
+  const openProjects=serviceProjects.filter(p=>p.quoteComplete&&p.status==="Estimate Sent");
   const unfinishedProjects=serviceProjects.filter(p=>!p.quoteComplete);
   const decidedProjects=approvedProjects.length+lostProjects.length;
   const closingRate=decidedProjects?approvedProjects.length/decidedProjects*100:0;
   const christmasProjects=projects.filter(p=>p.service==="Christmas");
   const permanentProjects=projects.filter(p=>p.service==="Permanent");
   const serviceClose=(rows:Project[])=>{
-    const won=rows.filter(p=>p.status==="Quote Approved").length;
-    const lost=rows.filter(p=>p.status==="Quote Not Approved").length;
+    const won=rows.filter(p=>p.quoteComplete&&p.status==="Quote Approved").length;
+    const lost=rows.filter(p=>p.quoteComplete&&p.status==="Quote Not Approved").length;
     return won+lost?won/(won+lost)*100:0;
   };
-  const visibleOpen=draftsOnly?openProjects.filter(p=>!p.quoteComplete):openProjects;
-  const visibleApproved=draftsOnly?approvedProjects.filter(p=>!p.quoteComplete):approvedProjects;
-  const visibleLost=draftsOnly?lostProjects.filter(p=>!p.quoteComplete):lostProjects;
+  const visibleOpen=draftsOnly?[]:openProjects;
+  const visibleApproved=draftsOnly?[]:approvedProjects;
+  const visibleLost=draftsOnly?[]:lostProjects;
 
   const handoff=buildHandoff(project,estimate);
 
@@ -619,11 +619,13 @@ export default function App(){
           <Metric label="Draft / unfinished" value={String(unfinishedProjects.length)} tone="orange"/>
         </div>
 
-        {serviceProjects.length===0?<div className="empty-state">No {projectServiceView} projects yet.</div>:<>
-          <ProjectGroup title="Estimate Sent · Open" tone="blue" projects={visibleOpen} onAction={projectAction}/>
-          <ProjectGroup title="Quote Approved" tone="green" projects={visibleApproved} onAction={projectAction}/>
-          <ProjectGroup title="Quote Not Approved" tone="red" projects={visibleLost} onAction={projectAction}/>
-        </>}
+        {serviceProjects.length===0?<div className="empty-state">No {projectServiceView} projects yet.</div>:draftsOnly?
+          <ProjectGroup title="Draft / Unfinished" tone="orange" projects={unfinishedProjects} onAction={projectAction}/>:
+          <div className="pipeline-board">
+            <ProjectGroup title="Estimate Sent · Open" tone="blue" projects={visibleOpen} onAction={projectAction}/>
+            <ProjectGroup title="Quote Approved · Closed Won" tone="green" projects={visibleApproved} onAction={projectAction}/>
+            <ProjectGroup title="Quote Not Approved · Closed Lost" tone="red" projects={visibleLost} onAction={projectAction}/>
+          </div>}
       </section>}
 
       {tab==="inventory"&&<section className="page">
@@ -933,12 +935,12 @@ function ProjectGroup({title,tone,projects,onAction}:{title:string;tone:string;p
         <div className="project-main"><b>{p.customer||"Unnamed customer"}</b><span>{[p.address,p.city].filter(Boolean).join(", ")||"No address"}</span></div>
         <span>{p.service}</span>
         <span className={p.quoteComplete?"completion-pill complete":"completion-pill draft"}>{p.quoteComplete?"Quote Complete":"Draft · Step "+(p.draftStep||0)}</span>
-        <span className={"status-pill "+p.status.toLowerCase().replaceAll(" ","-")}>{p.status}</span>
+        <span className={"status-pill "+p.status.toLowerCase().replaceAll(" ","-")}>{p.status==="Estimate Sent"?"Estimate Sent · Open":p.status==="Quote Approved"?"Closed Won":"Closed Lost"}</span>
         <select className="project-action-select" defaultValue="" onChange={e=>{const a=e.target.value;projectActionReset(e.currentTarget);onAction(p,a)}}>
-          <option value="" disabled>Update status…</option>
-          {p.status!=="Estimate Sent"&&<option value="estimate-sent">Move to New Estimate</option>}
-          {p.status!=="Quote Approved"&&<option value="approved">Mark Quote Approved</option>}
-          {p.status!=="Quote Not Approved"&&<option value="not-approved">Mark Quote Not Approved</option>}
+          <option value="" disabled>Update stage…</option>
+          {p.status!=="Estimate Sent"&&<option value="estimate-sent">Mark Estimate Sent · Open</option>}
+          {p.status!=="Quote Approved"&&<option value="approved">Mark Quote Approved · Closed Won</option>}
+          {p.status!=="Quote Not Approved"&&<option value="not-approved">Mark Quote Not Approved · Closed Lost</option>}
           <option value="delete">Delete Project</option>
         </select>
       </article>)}
