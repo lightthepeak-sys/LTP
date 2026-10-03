@@ -78,7 +78,10 @@ const INV:Record<string,InventoryItem>={
   bowStruct12:{name:'Structural Red/Gold Bow · 12"',category:"Bows",on:3,unit:"bows",cost:19.99,supplier:"LGL"},
   bowStruct15:{name:'Structural Red/Gold Bow · 15"',category:"Bows",on:3,unit:"bows",cost:32.99,supplier:"LGL"},
   bowStruct18:{name:'Structural Red/Gold Bow · 18"',category:"Bows",on:3,unit:"bows",cost:39.99,supplier:"LGL"},
-  permanent:{name:"Minleon Permanent Lighting",category:"Permanent",on:200,unit:"ft",cost:0,supplier:"Current inventory",note:"Current balance supplied by company; no cut/waste allowance."}
+  permanentPebble:{name:"Minleon RGBW+2 P50H Deep Pebbles · 12in",category:"Permanent",on:200,unit:"lights / ft",cost:4.4125,supplier:"Minleon Permanent Lighting",note:"Bulk public price: $1,765 for 400 pebbles. At 12in spacing = 400 ft. Current ~200 ft stock is provisional until reconciled."},
+  permanentTrack:{name:"Minleon Pebble Track Channel",category:"Permanent",on:0,unit:"ft",cost:1.6095,supplier:"Minleon Permanent Lighting",note:"Public price basis: $169 for 105 ft."},
+  permanentCover:{name:"Minleon Pebble Track Covers · 12in",category:"Permanent",on:0,unit:"ft",cost:.54995,supplier:"Minleon Permanent Lighting",note:"Public bulk basis: $549.95 per 1,000 covers; at 12in spacing treated as ~1 cover/ft."},
+  permanentControlBox:{name:"Minleon Permanent Control Box · WEC3 Mini + Power Supply",category:"Permanent",on:0,unit:"boxes",cost:375,supplier:"Minleon Permanent Lighting",note:"One control box per standard project; supports up to 1024 lights with power injection every 200 lights."}
 };
 const CHRISTMAS_BOM={
   c9WastePct:.10,
@@ -195,11 +198,21 @@ export default function App(){
       const frontSell=front*project.permanentRate;
       const frontSidesSell=frontSides*project.permanentRate;
       const allAroundSell=allAround*project.permanentRate;
+      const corePerFt=INV.permanentPebblePebble.cost+INV.permanentPebbleTrack.cost+INV.permanentPebbleCover.cost;
+      const materialFor=(ft:number)=>ft>0?ft*corePerFt+INV.permanentPebbleControlBox.cost:0;
+      const frontMaterial=materialFor(front);
+      const frontSidesMaterial=materialFor(frontSides);
+      const allAroundMaterial=materialFor(allAround);
       const sell=frontSell;
-      const material=0;
+      const material=frontMaterial;
       return {selling:sell,material,gp:sell-material,gm:sell?((sell-material)/sell)*100:0,roofRate:0,suggestedRoofRate:0,
         roofBulbs:0,ridgeBulbs:0,groundBulbs:0,bushStrands:0,miniStrands:0,
-        permanentOptions:{front:{ft:front,sell:frontSell},frontSides:{ft:frontSides,sell:frontSidesSell},allAround:{ft:allAround,sell:allAroundSell}}};
+        permanentCorePerFt:corePerFt,
+        permanentOptions:{
+          front:{ft:front,sell:frontSell,material:frontMaterial},
+          frontSides:{ft:frontSides,sell:frontSidesSell,material:frontSidesMaterial},
+          allAround:{ft:allAround,sell:allAroundSell,material:allAroundMaterial}
+        }};
     }
     let base=project.stories===1?8:project.stories===2?9:10;
     base+=complexityRates[project.complexity]||0;
@@ -272,7 +285,13 @@ export default function App(){
     if(p.service==="Permanent"){
       const ft=p.permanentCoverage==="All Around"?(p.permanentAllAroundFt||p.permanentFt):
         p.permanentCoverage==="Front & Sides"?(p.permanentFrontSidesFt||p.permanentFt):(p.permanentFrontFt||p.permanentFt);
-      return {permanent:ft};
+      if(!ft)return {};
+      return {
+        permanentPebble:ft,
+        permanentTrack:ft,
+        permanentCover:ft,
+        permanentControlBox:1
+      };
     }
     const c9Items=p.c9Items||[];
     const roofBulbs=c9Items.length?c9Items.filter(i=>["Roofline","Garage / Architecture","Window Outline"].includes(i.area)).reduce((s,i)=>s+Math.ceil(i.feet/1.25),0):Math.ceil((p.roofFt+p.garageFt+p.windowFt)/1.25);
