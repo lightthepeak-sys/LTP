@@ -198,8 +198,8 @@ export default function App(){
       const frontSell=front*project.permanentRate;
       const frontSidesSell=frontSides*project.permanentRate;
       const allAroundSell=allAround*project.permanentRate;
-      const corePerFt=INV.permanentPebblePebble.cost+INV.permanentPebbleTrack.cost+INV.permanentPebbleCover.cost;
-      const materialFor=(ft:number)=>ft>0?ft*corePerFt+INV.permanentPebbleControlBox.cost:0;
+      const corePerFt=INV.permanentPebble.cost+INV.permanentTrack.cost+INV.permanentCover.cost;
+      const materialFor=(ft:number)=>ft>0?ft*corePerFt+INV.permanentControlBox.cost:0;
       const frontMaterial=materialFor(front);
       const frontSidesMaterial=materialFor(frontSides);
       const allAroundMaterial=materialFor(allAround);
